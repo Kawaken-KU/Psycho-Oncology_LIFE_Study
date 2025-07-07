@@ -1,0 +1,1346 @@
+---
+title: "Analysis_examination"
+author: "KKawaguchi"
+date: "2024-11-25"
+output: html_document
+---
+
+# フォローアップ期間における検査情報を取得
+```{r}
+library(tidyverse)
+library(tableone)
+library(arrow)
+```
+
+# 1
+```{r}
+# 自治体データ読み込み
+df_1 <- read_parquet("your_directory/df_case_treated_1_LB12m_censor_main.parquet")
+
+# Date_last_followを作成：LF_24mかlmonの早い方
+df <- df_1 |> 
+  mutate(Date_last_follow_depression = pmin(LF_24m, lmon, Date_event_depression, na.rm = TRUE)) |> 
+  mutate(Date_last_follow_anxiety = pmin(LF_24m, lmon, Date_event_anxiety, na.rm = TRUE))
+```
+
+```{r}
+# long型で箱を作って処理
+# rtid3抽出
+df_long <- df |> 
+  select("rtid2")
+
+# 2018-04-01～2023-3-31までの箱を作る
+start_date <- as.Date("2018-04-01")
+end_date <- as.Date("2023-03-01")
+
+months <- tibble(month = seq.Date(start_date, end_date, by = "month"))
+
+df_long <- expand_grid(rtid2 = df_long$rtid2, actdat = months$month)
+```
+
+```{r}
+# MED_SINから必要検査項目を抽出
+# MED_SINデータの読み込み
+directory_path <- "your_directory/MED/1"
+files <- list.files(path =directory_path, pattern = "1_MED_SIN.*\\.parquet$", full.names = TRUE)
+
+# 空の箱を作る
+df_SIN <- data.frame()
+
+# 格納していく
+for (file in files){
+  df_temp <-read_parquet(file)|>
+    select(rtid2, actdat, sindai, sinkbn)|>
+    filter(sindai == "D" | sindai == "E")
+  
+  df_SIN <- bind_rows(df_SIN, df_temp)
+  
+  rm(df_temp)
+  gc()
+}
+
+df_SIN_2 <- df_SIN |> 
+  filter((sindai == "D" & sinkbn == "215") |
+           (sindai == "E" & sinkbn == "001") |
+           (sindai == "E" & sinkbn == "002") |
+           (sindai == "E" & sinkbn == "100") |
+           (sindai == "E" & sinkbn == "101") |
+           (sindai == "E" & sinkbn == "200") |
+           (sindai == "E" & sinkbn == "202"))
+
+df_SIN_2 <- df_SIN_2 |> 
+  filter(rtid2 != "_")
+
+df_SIN_2$actdat <- as.Date(paste0(df_SIN_2$actdat, "01"), format = "%Y%m%d")
+```
+
+```{r}
+# SIN情報を箱に追加
+df_comb <- df_long |> 
+  left_join(df_SIN_2, by = c("rtid2", "actdat"))
+
+# Date_entry列のみ抽出
+df_date_entry <- df_1 |> 
+  select("rtid2", "Date_entry")
+
+# Date_entryの結合と経過月の追加
+df_comb <- df_comb |> 
+  left_join(df_date_entry, by = "rtid2") |> 
+  mutate(time_from_entry = interval(Date_entry, actdat) %/% months(1)) |> 
+  filter(time_from_entry > 0)
+
+# 各列の要素がすべて同じ行は重複を削除
+df_comb <- df_comb |> 
+  distinct()
+
+# 24か月未満に限定
+df_comb <- df_comb |> 
+  filter(time_from_entry <= 24)
+
+write_parquet(df_comb, "df_comb_1.parquet")
+```
+
+# 2
+```{r}
+# 自治体データ読み込み
+df_2 <- read_parquet("your_directory/df_case_treated_2_LB12m_censor_main.parquet")
+
+# Date_last_followを作成：LF_24mかlmonの早い方
+df <- df_2 |> 
+  mutate(Date_last_follow_depression = pmin(LF_24m, lmon, Date_event_depression, na.rm = TRUE)) |> 
+  mutate(Date_last_follow_anxiety = pmin(LF_24m, lmon, Date_event_anxiety, na.rm = TRUE))
+```
+
+```{r}
+# long型で箱を作って処理
+# rtid3抽出
+df_long <- df |> 
+  select("rtid2")
+
+# 2018-04-01～2023-3-31までの箱を作る
+start_date <- as.Date("2018-04-01")
+end_date <- as.Date("2023-03-01")
+
+months <- tibble(month = seq.Date(start_date, end_date, by = "month"))
+
+df_long <- expand_grid(rtid2 = df_long$rtid2, actdat = months$month)
+```
+
+```{r}
+# MED_SINから必要検査項目を抽出
+# MED_SINデータの読み込み
+directory_path <- "your_directory/MED/2"
+files <- list.files(path =directory_path, pattern = "2_MED_SIN.*\\.parquet$", full.names = TRUE)
+
+# 空の箱を作る
+df_SIN <- data.frame()
+
+# 格納していく
+for (file in files){
+  df_temp <-read_parquet(file)|>
+    select(rtid2, actdat, sindai, sinkbn)|>
+    filter(sindai == "D" | sindai == "E")
+  
+  df_SIN <- bind_rows(df_SIN, df_temp)
+  
+  rm(df_temp)
+  gc()
+}
+
+df_SIN_2 <- df_SIN |> 
+  filter((sindai == "D" & sinkbn == "215") |
+           (sindai == "E" & sinkbn == "001") |
+           (sindai == "E" & sinkbn == "002") |
+           (sindai == "E" & sinkbn == "100") |
+           (sindai == "E" & sinkbn == "101") |
+           (sindai == "E" & sinkbn == "200") |
+           (sindai == "E" & sinkbn == "202"))
+
+df_SIN_2 <- df_SIN_2 |> 
+  filter(rtid2 != "_")
+
+df_SIN_2$actdat <- as.Date(paste0(df_SIN_2$actdat, "01"), format = "%Y%m%d")
+```
+
+```{r}
+# SIN情報を箱に追加
+df_comb <- df_long |> 
+  left_join(df_SIN_2, by = c("rtid2", "actdat"))
+
+# Date_entry列のみ抽出
+df_date_entry <- df_2 |> 
+  select("rtid2", "Date_entry")
+
+# Date_entryの結合と経過月の追加
+df_comb <- df_comb |> 
+  left_join(df_date_entry, by = "rtid2") |> 
+  mutate(time_from_entry = interval(Date_entry, actdat) %/% months(1)) |> 
+  filter(time_from_entry > 0)
+
+# 各列の要素がすべて同じ行は重複を削除
+df_comb <- df_comb |> 
+  distinct()
+
+# 24か月未満に限定
+df_comb <- df_comb |> 
+  filter(time_from_entry <= 24)
+
+write_parquet(df_comb, "df_comb_2.parquet")
+```
+
+# 3
+```{r}
+# 自治体データ読み込み
+df_3 <- read_parquet("your_directory/df_case_treated_3_LB12m_censor_main.parquet")
+
+# Date_last_followを作成：LF_24mかlmonの早い方
+df <- df_3 |> 
+  mutate(Date_last_follow_depression = pmin(LF_24m, lmon, Date_event_depression, na.rm = TRUE)) |> 
+  mutate(Date_last_follow_anxiety = pmin(LF_24m, lmon, Date_event_anxiety, na.rm = TRUE))
+```
+
+```{r}
+# long型で箱を作って処理
+# rtid3抽出
+df_long <- df |> 
+  select("rtid2")
+
+# 2018-04-01～2023-3-31までの箱を作る
+start_date <- as.Date("2018-04-01")
+end_date <- as.Date("2023-03-01")
+
+months <- tibble(month = seq.Date(start_date, end_date, by = "month"))
+
+df_long <- expand_grid(rtid2 = df_long$rtid2, actdat = months$month)
+```
+
+```{r}
+# MED_SINから必要検査項目を抽出
+# MED_SINデータの読み込み
+directory_path <- "your_directory/MED/3"
+files <- list.files(path =directory_path, pattern = "3_MED_SIN.*\\.parquet$", full.names = TRUE)
+
+# 空の箱を作る
+df_SIN <- data.frame()
+
+# 格納していく
+for (file in files){
+  df_temp <-read_parquet(file)|>
+    select(rtid2, actdat, sindai, sinkbn)|>
+    filter(sindai == "D" | sindai == "E")
+  
+  df_SIN <- bind_rows(df_SIN, df_temp)
+  
+  rm(df_temp)
+  gc()
+}
+
+df_SIN_2 <- df_SIN |> 
+  filter((sindai == "D" & sinkbn == 215)|
+           (sindai == "E" & sinkbn == 001)|
+           (sindai == "E" & sinkbn == 002)|
+           (sindai == "E" & sinkbn == 100)|
+           (sindai == "E" & sinkbn == 101)|
+           (sindai == "E" & sinkbn == 200)|
+           (sindai == "E" & sinkbn == 202))
+
+df_SIN_2 <- df_SIN_2 |> 
+  filter(rtid2 != "_")
+
+df_SIN_2$actdat <- as.Date(paste0(df_SIN_2$actdat, "01"), format = "%Y%m%d")
+```
+
+```{r}
+# SIN情報を箱に追加
+df_comb <- df_long |> 
+  left_join(df_SIN_2, by = c("rtid2", "actdat"))
+
+# Date_entry列のみ抽出
+df_date_entry <- df_3 |> 
+  select("rtid2", "Date_entry")
+
+# Date_entryの結合と経過月の追加
+df_comb <- df_comb |> 
+  left_join(df_date_entry, by = "rtid2") |> 
+  mutate(time_from_entry = interval(Date_entry, actdat) %/% months(1)) |> 
+  filter(time_from_entry > 0)
+
+# 各列の要素がすべて同じ行は重複を削除
+df_comb <- df_comb |> 
+  distinct()
+
+# 24か月未満に限定
+df_comb <- df_comb |> 
+  filter(time_from_entry <= 24)
+
+write_parquet(df_comb, "df_comb_3.parquet")
+```
+
+# 4
+```{r}
+# 自治体データ読み込み
+df_4 <- read_parquet("your_directory/df_case_treated_4_LB12m_censor_main.parquet")
+
+# Date_last_followを作成：LF_24mかlmonの早い方
+df <- df_4 |> 
+  mutate(Date_last_follow_depression = pmin(LF_24m, lmon, Date_event_depression, na.rm = TRUE)) |> 
+  mutate(Date_last_follow_anxiety = pmin(LF_24m, lmon, Date_event_anxiety, na.rm = TRUE))
+```
+
+```{r}
+# long型で箱を作って処理
+# rtid3抽出
+df_long <- df |> 
+  select("rtid2")
+
+# 2018-04-01～2023-3-31までの箱を作る
+start_date <- as.Date("2018-04-01")
+end_date <- as.Date("2023-03-01")
+
+months <- tibble(month = seq.Date(start_date, end_date, by = "month"))
+
+df_long <- expand_grid(rtid2 = df_long$rtid2, actdat = months$month)
+```
+
+```{r}
+# MED_SINから必要検査項目を抽出
+# MED_SINデータの読み込み
+directory_path <- "your_directory/MED/4"
+files <- list.files(path =directory_path, pattern = "4_MED_SIN.*\\.parquet$", full.names = TRUE)
+
+# 空の箱を作る
+df_SIN <- data.frame()
+
+# 格納していく
+for (file in files){
+  df_temp <-read_parquet(file)|>
+    select(rtid2, actdat, sindai, sinkbn)|>
+    filter(sindai == "D" | sindai == "E")
+  
+  df_SIN <- bind_rows(df_SIN, df_temp)
+  
+  rm(df_temp)
+  gc()
+}
+
+df_SIN_2 <- df_SIN |> 
+  filter((sindai == "D" & sinkbn == 215)|
+           (sindai == "E" & sinkbn == 001)|
+           (sindai == "E" & sinkbn == 002)|
+           (sindai == "E" & sinkbn == 100)|
+           (sindai == "E" & sinkbn == 101)|
+           (sindai == "E" & sinkbn == 200)|
+           (sindai == "E" & sinkbn == 202))
+
+df_SIN_2 <- df_SIN_2 |> 
+  filter(rtid2 != "_")
+
+df_SIN_2$actdat <- as.Date(paste0(df_SIN_2$actdat, "01"), format = "%Y%m%d")
+```
+
+```{r}
+# SIN情報を箱に追加
+df_comb <- df_long |> 
+  left_join(df_SIN_2, by = c("rtid2", "actdat"))
+
+# Date_entry列のみ抽出
+df_date_entry <- df_4 |> 
+  select("rtid2", "Date_entry")
+
+# Date_entryの結合と経過月の追加
+df_comb <- df_comb |> 
+  left_join(df_date_entry, by = "rtid2") |> 
+  mutate(time_from_entry = interval(Date_entry, actdat) %/% months(1)) |> 
+  filter(time_from_entry > 0)
+
+# 各列の要素がすべて同じ行は重複を削除
+df_comb <- df_comb |> 
+  distinct()
+
+# 24か月未満に限定
+df_comb <- df_comb |> 
+  filter(time_from_entry <= 24)
+
+write_parquet(df_comb, "df_comb_4.parquet")
+```
+
+# 5
+```{r}
+# 自治体データ読み込み
+df_5 <- read_parquet("your_directory/df_case_treated_5_LB12m_censor_main.parquet")
+
+# Date_last_followを作成：LF_24mかlmonの早い方
+df <- df_5 |> 
+  mutate(Date_last_follow_depression = pmin(LF_24m, lmon, Date_event_depression, na.rm = TRUE)) |> 
+  mutate(Date_last_follow_anxiety = pmin(LF_24m, lmon, Date_event_anxiety, na.rm = TRUE))
+```
+
+```{r}
+# long型で箱を作って処理
+# rtid3抽出
+df_long <- df |> 
+  select("rtid2")
+
+# 2018-04-01～2023-3-31までの箱を作る
+start_date <- as.Date("2018-04-01")
+end_date <- as.Date("2023-03-01")
+
+months <- tibble(month = seq.Date(start_date, end_date, by = "month"))
+
+df_long <- expand_grid(rtid2 = df_long$rtid2, actdat = months$month)
+```
+
+```{r}
+# MED_SINから必要検査項目を抽出
+# MED_SINデータの読み込み
+directory_path <- "your_directory/MED/5"
+files <- list.files(path =directory_path, pattern = "5_MED_SIN.*\\.parquet$", full.names = TRUE)
+
+# 空の箱を作る
+df_SIN <- data.frame()
+
+# 格納していく
+for (file in files){
+  df_temp <-read_parquet(file)|>
+    select(rtid2, actdat, sindai, sinkbn)|>
+    filter(sindai == "D" | sindai == "E")
+  
+  df_SIN <- bind_rows(df_SIN, df_temp)
+  
+  rm(df_temp)
+  gc()
+}
+
+df_SIN_2 <- df_SIN |> 
+  filter((sindai == "D" & sinkbn == 215)|
+           (sindai == "E" & sinkbn == 001)|
+           (sindai == "E" & sinkbn == 002)|
+           (sindai == "E" & sinkbn == 100)|
+           (sindai == "E" & sinkbn == 101)|
+           (sindai == "E" & sinkbn == 200)|
+           (sindai == "E" & sinkbn == 202))
+
+df_SIN_2 <- df_SIN_2 |> 
+  filter(rtid2 != "_")
+
+df_SIN_2$actdat <- as.Date(paste0(df_SIN_2$actdat, "01"), format = "%Y%m%d")
+```
+
+```{r}
+# SIN情報を箱に追加
+df_comb <- df_long |> 
+  left_join(df_SIN_2, by = c("rtid2", "actdat"))
+
+# Date_entry列のみ抽出
+df_date_entry <- df_5 |> 
+  select("rtid2", "Date_entry")
+
+# Date_entryの結合と経過月の追加
+df_comb <- df_comb |> 
+  left_join(df_date_entry, by = "rtid2") |> 
+  mutate(time_from_entry = interval(Date_entry, actdat) %/% months(1)) |> 
+  filter(time_from_entry > 0)
+
+# 各列の要素がすべて同じ行は重複を削除
+df_comb <- df_comb |> 
+  distinct()
+
+# 24か月未満に限定
+df_comb <- df_comb |> 
+  filter(time_from_entry <= 24)
+
+write_parquet(df_comb, "df_comb_5.parquet")
+```
+
+# 6
+```{r}
+# 自治体データ読み込み
+df_6 <- read_parquet("your_directory/df_case_treated_6_LB12m_censor_main.parquet")
+
+# Date_last_followを作成：LF_24mかlmonの早い方
+df <- df_6 |> 
+  mutate(Date_last_follow_depression = pmin(LF_24m, lmon, Date_event_depression, na.rm = TRUE)) |> 
+  mutate(Date_last_follow_anxiety = pmin(LF_24m, lmon, Date_event_anxiety, na.rm = TRUE))
+```
+
+```{r}
+# long型で箱を作って処理
+# rtid3抽出
+df_long <- df |> 
+  select("rtid2")
+
+# 2018-04-01～2023-3-31までの箱を作る
+start_date <- as.Date("2018-04-01")
+end_date <- as.Date("2023-03-01")
+
+months <- tibble(month = seq.Date(start_date, end_date, by = "month"))
+
+df_long <- expand_grid(rtid2 = df_long$rtid2, actdat = months$month)
+```
+
+```{r}
+# MED_SINから必要検査項目を抽出
+# MED_SINデータの読み込み
+directory_path <- "your_directory/MED/6"
+files <- list.files(path =directory_path, pattern = "6_MED_SIN.*\\.parquet$", full.names = TRUE)
+
+# 空の箱を作る
+df_SIN <- data.frame()
+
+# 格納していく
+for (file in files){
+  df_temp <-read_parquet(file)|>
+    select(rtid2, actdat, sindai, sinkbn)|>
+    filter(sindai == "D" | sindai == "E")
+  
+  df_SIN <- bind_rows(df_SIN, df_temp)
+  
+  rm(df_temp)
+  gc()
+}
+
+df_SIN_2 <- df_SIN |> 
+  filter((sindai == "D" & sinkbn == 215)|
+           (sindai == "E" & sinkbn == 001)|
+           (sindai == "E" & sinkbn == 002)|
+           (sindai == "E" & sinkbn == 100)|
+           (sindai == "E" & sinkbn == 101)|
+           (sindai == "E" & sinkbn == 200)|
+           (sindai == "E" & sinkbn == 202))
+
+df_SIN_2 <- df_SIN_2 |> 
+  filter(rtid2 != "_")
+
+df_SIN_2$actdat <- as.Date(paste0(df_SIN_2$actdat, "01"), format = "%Y%m%d")
+```
+
+```{r}
+# SIN情報を箱に追加
+df_comb <- df_long |> 
+  left_join(df_SIN_2, by = c("rtid2", "actdat"))
+
+# Date_entry列のみ抽出
+df_date_entry <- df_6 |> 
+  select("rtid2", "Date_entry")
+
+# Date_entryの結合と経過月の追加
+df_comb <- df_comb |> 
+  left_join(df_date_entry, by = "rtid2") |> 
+  mutate(time_from_entry = interval(Date_entry, actdat) %/% months(1)) |> 
+  filter(time_from_entry > 0)
+
+# 各列の要素がすべて同じ行は重複を削除
+df_comb <- df_comb |> 
+  distinct()
+
+# 24か月未満に限定
+df_comb <- df_comb |> 
+  filter(time_from_entry <= 24)
+
+write_parquet(df_comb, "df_comb_6.parquet")
+```
+
+# 7
+```{r}
+# 自治体データ読み込み
+df_7 <- read_parquet("your_directory/df_case_treated_7_LB12m_censor_main.parquet")
+
+# Date_last_followを作成：LF_24mかlmonの早い方
+df <- df_7 |> 
+  mutate(Date_last_follow_depression = pmin(LF_24m, lmon, Date_event_depression, na.rm = TRUE)) |> 
+  mutate(Date_last_follow_anxiety = pmin(LF_24m, lmon, Date_event_anxiety, na.rm = TRUE))
+```
+
+```{r}
+# long型で箱を作って処理
+# rtid3抽出
+df_long <- df |> 
+  select("rtid2")
+
+# 2018-04-01～2023-3-31までの箱を作る
+start_date <- as.Date("2018-04-01")
+end_date <- as.Date("2023-03-01")
+
+months <- tibble(month = seq.Date(start_date, end_date, by = "month"))
+
+df_long <- expand_grid(rtid2 = df_long$rtid2, actdat = months$month)
+```
+
+```{r}
+# MED_SINから必要検査項目を抽出
+# MED_SINデータの読み込み
+directory_path <- "your_directory/MED/7"
+files <- list.files(path =directory_path, pattern = "7_MED_SIN.*\\.parquet$", full.names = TRUE)
+
+# 空の箱を作る
+df_SIN <- data.frame()
+
+# 格納していく
+for (file in files){
+  df_temp <-read_parquet(file)|>
+    select(rtid2, actdat, sindai, sinkbn)|>
+    filter(sindai == "D" | sindai == "E")
+  
+  df_SIN <- bind_rows(df_SIN, df_temp)
+  
+  rm(df_temp)
+  gc()
+}
+
+df_SIN_2 <- df_SIN |> 
+  filter((sindai == "D" & sinkbn == 215)|
+           (sindai == "E" & sinkbn == 001)|
+           (sindai == "E" & sinkbn == 002)|
+           (sindai == "E" & sinkbn == 100)|
+           (sindai == "E" & sinkbn == 101)|
+           (sindai == "E" & sinkbn == 200)|
+           (sindai == "E" & sinkbn == 202))
+
+df_SIN_2 <- df_SIN_2 |> 
+  filter(rtid2 != "_")
+
+df_SIN_2$actdat <- as.Date(paste0(df_SIN_2$actdat, "01"), format = "%Y%m%d")
+```
+
+```{r}
+# SIN情報を箱に追加
+df_comb <- df_long |> 
+  left_join(df_SIN_2, by = c("rtid2", "actdat"))
+
+# Date_entry列のみ抽出
+df_date_entry <- df_7 |> 
+  select("rtid2", "Date_entry")
+
+# Date_entryの結合と経過月の追加
+df_comb <- df_comb |> 
+  left_join(df_date_entry, by = "rtid2") |> 
+  mutate(time_from_entry = interval(Date_entry, actdat) %/% months(1)) |> 
+  filter(time_from_entry > 0)
+
+# 各列の要素がすべて同じ行は重複を削除
+df_comb <- df_comb |> 
+  distinct()
+
+# 24か月未満に限定
+df_comb <- df_comb |> 
+  filter(time_from_entry <= 24)
+
+write_parquet(df_comb, "df_comb_7.parquet")
+```
+
+# 8
+```{r}
+# 自治体データ読み込み
+df_8 <- read_parquet("your_directory/df_case_treated_8_LB12m_censor_main.parquet")
+
+# Date_last_followを作成：LF_24mかlmonの早い方
+df <- df_8 |> 
+  mutate(Date_last_follow_depression = pmin(LF_24m, lmon, Date_event_depression, na.rm = TRUE)) |> 
+  mutate(Date_last_follow_anxiety = pmin(LF_24m, lmon, Date_event_anxiety, na.rm = TRUE))
+```
+
+```{r}
+# long型で箱を作って処理
+# rtid3抽出
+df_long <- df |> 
+  select("rtid2")
+
+# 2018-04-01～2023-3-31までの箱を作る
+start_date <- as.Date("2018-04-01")
+end_date <- as.Date("2023-03-01")
+
+months <- tibble(month = seq.Date(start_date, end_date, by = "month"))
+
+df_long <- expand_grid(rtid2 = df_long$rtid2, actdat = months$month)
+```
+
+```{r}
+# MED_SINから必要検査項目を抽出
+# MED_SINデータの読み込み
+directory_path <- "your_directory/MED/8"
+files <- list.files(path =directory_path, pattern = "8_MED_SIN.*\\.parquet$", full.names = TRUE)
+
+# 空の箱を作る
+df_SIN <- data.frame()
+
+# 格納していく
+for (file in files){
+  df_temp <-read_parquet(file)|>
+    select(rtid2, actdat, sindai, sinkbn)|>
+    filter(sindai == "D" | sindai == "E")
+  
+  df_SIN <- bind_rows(df_SIN, df_temp)
+  
+  rm(df_temp)
+  gc()
+}
+
+df_SIN_2 <- df_SIN |> 
+  filter((sindai == "D" & sinkbn == 215)|
+           (sindai == "E" & sinkbn == 001)|
+           (sindai == "E" & sinkbn == 002)|
+           (sindai == "E" & sinkbn == 100)|
+           (sindai == "E" & sinkbn == 101)|
+           (sindai == "E" & sinkbn == 200)|
+           (sindai == "E" & sinkbn == 202))
+
+df_SIN_2 <- df_SIN_2 |> 
+  filter(rtid2 != "_")
+
+df_SIN_2$actdat <- as.Date(paste0(df_SIN_2$actdat, "01"), format = "%Y%m%d")
+```
+
+```{r}
+# SIN情報を箱に追加
+df_comb <- df_long |> 
+  left_join(df_SIN_2, by = c("rtid2", "actdat"))
+
+# Date_entry列のみ抽出
+df_date_entry <- df_8 |> 
+  select("rtid2", "Date_entry")
+
+# Date_entryの結合と経過月の追加
+df_comb <- df_comb |> 
+  left_join(df_date_entry, by = "rtid2") |> 
+  mutate(time_from_entry = interval(Date_entry, actdat) %/% months(1)) |> 
+  filter(time_from_entry > 0)
+
+# 各列の要素がすべて同じ行は重複を削除
+df_comb <- df_comb |> 
+  distinct()
+
+# 24か月未満に限定
+df_comb <- df_comb |> 
+  filter(time_from_entry <= 24)
+
+write_parquet(df_comb, "df_comb_8.parquet")
+```
+
+# 9
+```{r}
+# 自治体データ読み込み
+df_9 <- read_parquet("your_directory/df_case_treated_9_LB12m_censor_main.parquet")
+
+# Date_last_followを作成：LF_24mかlmonの早い方
+df <- df_9 |> 
+  mutate(Date_last_follow_depression = pmin(LF_24m, lmon, Date_event_depression, na.rm = TRUE)) |> 
+  mutate(Date_last_follow_anxiety = pmin(LF_24m, lmon, Date_event_anxiety, na.rm = TRUE))
+```
+
+```{r}
+# long型で箱を作って処理
+# rtid3抽出
+df_long <- df |> 
+  select("rtid2")
+
+# 2018-04-01～2023-3-31までの箱を作る
+start_date <- as.Date("2018-04-01")
+end_date <- as.Date("2023-03-01")
+
+months <- tibble(month = seq.Date(start_date, end_date, by = "month"))
+
+df_long <- expand_grid(rtid2 = df_long$rtid2, actdat = months$month)
+```
+
+```{r}
+# MED_SINから必要検査項目を抽出
+# MED_SINデータの読み込み
+directory_path <- "your_directory/MED/9"
+files <- list.files(path =directory_path, pattern = "9_MED_SIN.*\\.parquet$", full.names = TRUE)
+
+# 空の箱を作る
+df_SIN <- data.frame()
+
+# 格納していく
+for (file in files){
+  df_temp <-read_parquet(file)|>
+    select(rtid2, actdat, sindai, sinkbn)|>
+    filter(sindai == "D" | sindai == "E")
+  
+  df_SIN <- bind_rows(df_SIN, df_temp)
+  
+  rm(df_temp)
+  gc()
+}
+
+df_SIN_2 <- df_SIN |> 
+  filter((sindai == "D" & sinkbn == 215)|
+           (sindai == "E" & sinkbn == 001)|
+           (sindai == "E" & sinkbn == 002)|
+           (sindai == "E" & sinkbn == 100)|
+           (sindai == "E" & sinkbn == 101)|
+           (sindai == "E" & sinkbn == 200)|
+           (sindai == "E" & sinkbn == 202))
+
+df_SIN_2 <- df_SIN_2 |> 
+  filter(rtid2 != "_")
+
+df_SIN_2$actdat <- as.Date(paste0(df_SIN_2$actdat, "01"), format = "%Y%m%d")
+```
+
+```{r}
+# SIN情報を箱に追加
+df_comb <- df_long |> 
+  left_join(df_SIN_2, by = c("rtid2", "actdat"))
+
+# Date_entry列のみ抽出
+df_date_entry <- df_9 |> 
+  select("rtid2", "Date_entry")
+
+# Date_entryの結合と経過月の追加
+df_comb <- df_comb |> 
+  left_join(df_date_entry, by = "rtid2") |> 
+  mutate(time_from_entry = interval(Date_entry, actdat) %/% months(1)) |> 
+  filter(time_from_entry > 0)
+
+# 各列の要素がすべて同じ行は重複を削除
+df_comb <- df_comb |> 
+  distinct()
+
+# 24か月未満に限定
+df_comb <- df_comb |> 
+  filter(time_from_entry <= 24)
+
+write_parquet(df_comb, "df_comb_9.parquet")
+```
+
+# 10
+```{r}
+# 自治体データ読み込み
+df_10 <- read_parquet("your_directory/df_case_treated_10_LB12m_censor_main.parquet")
+
+# Date_last_followを作成：LF_24mかlmonの早い方
+df <- df_10 |> 
+  mutate(Date_last_follow_depression = pmin(LF_24m, lmon, Date_event_depression, na.rm = TRUE)) |> 
+  mutate(Date_last_follow_anxiety = pmin(LF_24m, lmon, Date_event_anxiety, na.rm = TRUE))
+```
+
+```{r}
+# long型で箱を作って処理
+# rtid3抽出
+df_long <- df |> 
+  select("rtid2")
+
+# 2018-04-01～2023-3-31までの箱を作る
+start_date <- as.Date("2018-04-01")
+end_date <- as.Date("2023-03-01")
+
+months <- tibble(month = seq.Date(start_date, end_date, by = "month"))
+
+df_long <- expand_grid(rtid2 = df_long$rtid2, actdat = months$month)
+```
+
+```{r}
+# MED_SINから必要検査項目を抽出
+# MED_SINデータの読み込み
+directory_path <- "your_directory/MED/10"
+files <- list.files(path =directory_path, pattern = "10_MED_SIN.*\\.parquet$", full.names = TRUE)
+
+# 空の箱を作る
+df_SIN <- data.frame()
+
+# 格納していく
+for (file in files){
+  df_temp <-read_parquet(file)|>
+    select(rtid2, actdat, sindai, sinkbn)|>
+    filter(sindai == "D" | sindai == "E")
+  
+  df_SIN <- bind_rows(df_SIN, df_temp)
+  
+  rm(df_temp)
+  gc()
+}
+
+df_SIN_2 <- df_SIN |> 
+  filter((sindai == "D" & sinkbn == 215)|
+           (sindai == "E" & sinkbn == 001)|
+           (sindai == "E" & sinkbn == 002)|
+           (sindai == "E" & sinkbn == 100)|
+           (sindai == "E" & sinkbn == 101)|
+           (sindai == "E" & sinkbn == 200)|
+           (sindai == "E" & sinkbn == 202))
+
+df_SIN_2 <- df_SIN_2 |> 
+  filter(rtid2 != "_")
+
+df_SIN_2$actdat <- as.Date(paste0(df_SIN_2$actdat, "01"), format = "%Y%m%d")
+```
+
+```{r}
+# SIN情報を箱に追加
+df_comb <- df_long |> 
+  left_join(df_SIN_2, by = c("rtid2", "actdat"))
+
+# Date_entry列のみ抽出
+df_date_entry <- df_10 |> 
+  select("rtid2", "Date_entry")
+
+# Date_entryの結合と経過月の追加
+df_comb <- df_comb |> 
+  left_join(df_date_entry, by = "rtid2") |> 
+  mutate(time_from_entry = interval(Date_entry, actdat) %/% months(1)) |> 
+  filter(time_from_entry > 0)
+
+# 各列の要素がすべて同じ行は重複を削除
+df_comb <- df_comb |> 
+  distinct()
+
+# 24か月未満に限定
+df_comb <- df_comb |> 
+  filter(time_from_entry <= 24)
+
+write_parquet(df_comb, "df_comb_10.parquet")
+```
+
+# 11
+```{r}
+# 自治体データ読み込み
+df_11 <- read_parquet("your_directory/df_case_treated_11_LB12m_censor_main.parquet")
+
+# Date_last_followを作成：LF_24mかlmonの早い方
+df <- df_11 |> 
+  mutate(Date_last_follow_depression = pmin(LF_24m, lmon, Date_event_depression, na.rm = TRUE)) |> 
+  mutate(Date_last_follow_anxiety = pmin(LF_24m, lmon, Date_event_anxiety, na.rm = TRUE))
+```
+
+```{r}
+# long型で箱を作って処理
+# rtid3抽出
+df_long <- df |> 
+  select("rtid2")
+
+# 2018-04-01～2023-3-31までの箱を作る
+start_date <- as.Date("2018-04-01")
+end_date <- as.Date("2023-03-01")
+
+months <- tibble(month = seq.Date(start_date, end_date, by = "month"))
+
+df_long <- expand_grid(rtid2 = df_long$rtid2, actdat = months$month)
+```
+
+```{r}
+# MED_SINから必要検査項目を抽出
+# MED_SINデータの読み込み
+directory_path <- "your_directory/MED/11"
+files <- list.files(path =directory_path, pattern = "11_MED_SIN.*\\.parquet$", full.names = TRUE)
+
+# 空の箱を作る
+df_SIN <- data.frame()
+
+# 格納していく
+for (file in files){
+  df_temp <-read_parquet(file)|>
+    select(rtid2, actdat, sindai, sinkbn)|>
+    filter(sindai == "D" | sindai == "E")
+  
+  df_SIN <- bind_rows(df_SIN, df_temp)
+  
+  rm(df_temp)
+  gc()
+}
+
+df_SIN_2 <- df_SIN |> 
+  filter((sindai == "D" & sinkbn == 215)|
+           (sindai == "E" & sinkbn == 001)|
+           (sindai == "E" & sinkbn == 002)|
+           (sindai == "E" & sinkbn == 100)|
+           (sindai == "E" & sinkbn == 101)|
+           (sindai == "E" & sinkbn == 200)|
+           (sindai == "E" & sinkbn == 202))
+
+df_SIN_2 <- df_SIN_2 |> 
+  filter(rtid2 != "_")
+
+df_SIN_2$actdat <- as.Date(paste0(df_SIN_2$actdat, "01"), format = "%Y%m%d")
+```
+
+```{r}
+# SIN情報を箱に追加
+df_comb <- df_long |> 
+  left_join(df_SIN_2, by = c("rtid2", "actdat"))
+
+# Date_entry列のみ抽出
+df_date_entry <- df_11 |> 
+  select("rtid2", "Date_entry")
+
+# Date_entryの結合と経過月の追加
+df_comb <- df_comb |> 
+  left_join(df_date_entry, by = "rtid2") |> 
+  mutate(time_from_entry = interval(Date_entry, actdat) %/% months(1)) |> 
+  filter(time_from_entry > 0)
+
+# 各列の要素がすべて同じ行は重複を削除
+df_comb <- df_comb |> 
+  distinct()
+
+# 24か月未満に限定
+df_comb <- df_comb |> 
+  filter(time_from_entry <= 24)
+
+write_parquet(df_comb, "df_comb_11.parquet")
+```
+
+# 12
+```{r}
+# 自治体データ読み込み
+df_12 <- read_parquet("your_directory/df_case_treated_12_LB12m_censor_main.parquet")
+
+# Date_last_followを作成：LF_24mかlmonの早い方
+df <- df_12 |> 
+  mutate(Date_last_follow_depression = pmin(LF_24m, lmon, Date_event_depression, na.rm = TRUE)) |> 
+  mutate(Date_last_follow_anxiety = pmin(LF_24m, lmon, Date_event_anxiety, na.rm = TRUE))
+```
+
+```{r}
+# long型で箱を作って処理
+# rtid3抽出
+df_long <- df |> 
+  select("rtid2")
+
+# 2018-04-01～2023-3-31までの箱を作る
+start_date <- as.Date("2018-04-01")
+end_date <- as.Date("2023-03-01")
+
+months <- tibble(month = seq.Date(start_date, end_date, by = "month"))
+
+df_long <- expand_grid(rtid2 = df_long$rtid2, actdat = months$month)
+```
+
+```{r}
+# MED_SINから必要検査項目を抽出
+# MED_SINデータの読み込み
+directory_path <- "your_directory/MED/12"
+files <- list.files(path =directory_path, pattern = "12_MED_SIN.*\\.parquet$", full.names = TRUE)
+
+# 空の箱を作る
+df_SIN <- data.frame()
+
+# 格納していく
+for (file in files){
+  df_temp <-read_parquet(file)|>
+    select(rtid2, actdat, sindai, sinkbn)|>
+    filter(sindai == "D" | sindai == "E")
+  
+  df_SIN <- bind_rows(df_SIN, df_temp)
+  
+  rm(df_temp)
+  gc()
+}
+
+df_SIN_2 <- df_SIN |> 
+  filter((sindai == "D" & sinkbn == 215)|
+           (sindai == "E" & sinkbn == 001)|
+           (sindai == "E" & sinkbn == 002)|
+           (sindai == "E" & sinkbn == 100)|
+           (sindai == "E" & sinkbn == 101)|
+           (sindai == "E" & sinkbn == 200)|
+           (sindai == "E" & sinkbn == 202))
+
+df_SIN_2 <- df_SIN_2 |> 
+  filter(rtid2 != "_")
+
+df_SIN_2$actdat <- as.Date(paste0(df_SIN_2$actdat, "01"), format = "%Y%m%d")
+```
+
+```{r}
+# SIN情報を箱に追加
+df_comb <- df_long |> 
+  left_join(df_SIN_2, by = c("rtid2", "actdat"))
+
+# Date_entry列のみ抽出
+df_date_entry <- df_12 |> 
+  select("rtid2", "Date_entry")
+
+# Date_entryの結合と経過月の追加
+df_comb <- df_comb |> 
+  left_join(df_date_entry, by = "rtid2") |> 
+  mutate(time_from_entry = interval(Date_entry, actdat) %/% months(1)) |> 
+  filter(time_from_entry > 0)
+
+# 各列の要素がすべて同じ行は重複を削除
+df_comb <- df_comb |> 
+  distinct()
+
+# 24か月未満に限定
+df_comb <- df_comb |> 
+  filter(time_from_entry <= 24)
+
+write_parquet(df_comb, "df_comb_12.parquet")
+```
+
+# 13
+```{r}
+# 自治体データ読み込み
+df_13 <- read_parquet("your_directory/df_case_treated_13_LB12m_censor_main.parquet")
+
+# Date_last_followを作成：LF_24mかlmonの早い方
+df <- df_13 |> 
+  mutate(Date_last_follow_depression = pmin(LF_24m, lmon, Date_event_depression, na.rm = TRUE)) |> 
+  mutate(Date_last_follow_anxiety = pmin(LF_24m, lmon, Date_event_anxiety, na.rm = TRUE))
+```
+
+```{r}
+# long型で箱を作って処理
+# rtid3抽出
+df_long <- df |> 
+  select("rtid2")
+
+# 2018-04-01～2023-3-31までの箱を作る
+start_date <- as.Date("2018-04-01")
+end_date <- as.Date("2023-03-01")
+
+months <- tibble(month = seq.Date(start_date, end_date, by = "month"))
+
+df_long <- expand_grid(rtid2 = df_long$rtid2, actdat = months$month)
+```
+
+```{r}
+# MED_SINから必要検査項目を抽出
+# MED_SINデータの読み込み
+directory_path <- "your_directory/MED/13"
+files <- list.files(path =directory_path, pattern = "13_MED_SIN.*\\.parquet$", full.names = TRUE)
+
+# 空の箱を作る
+df_SIN <- data.frame()
+
+# 格納していく
+for (file in files){
+  df_temp <-read_parquet(file)|>
+    select(rtid2, actdat, sindai, sinkbn)|>
+    filter(sindai == "D" | sindai == "E")
+  
+  df_SIN <- bind_rows(df_SIN, df_temp)
+  
+  rm(df_temp)
+  gc()
+}
+
+df_SIN_2 <- df_SIN |> 
+  filter((sindai == "D" & sinkbn == 215)|
+           (sindai == "E" & sinkbn == 001)|
+           (sindai == "E" & sinkbn == 002)|
+           (sindai == "E" & sinkbn == 100)|
+           (sindai == "E" & sinkbn == 101)|
+           (sindai == "E" & sinkbn == 200)|
+           (sindai == "E" & sinkbn == 202))
+
+df_SIN_2 <- df_SIN_2 |> 
+  filter(rtid2 != "_")
+
+df_SIN_2$actdat <- as.Date(paste0(df_SIN_2$actdat, "01"), format = "%Y%m%d")
+```
+
+```{r}
+# SIN情報を箱に追加
+df_comb <- df_long |> 
+  left_join(df_SIN_2, by = c("rtid2", "actdat"))
+
+# Date_entry列のみ抽出
+df_date_entry <- df_13 |> 
+  select("rtid2", "Date_entry")
+
+# Date_entryの結合と経過月の追加
+df_comb <- df_comb |> 
+  left_join(df_date_entry, by = "rtid2") |> 
+  mutate(time_from_entry = interval(Date_entry, actdat) %/% months(1)) |> 
+  filter(time_from_entry > 0)
+
+# 各列の要素がすべて同じ行は重複を削除
+df_comb <- df_comb |> 
+  distinct()
+
+# 24か月未満に限定
+df_comb <- df_comb |> 
+  filter(time_from_entry <= 24)
+
+write_parquet(df_comb, "df_comb_13.parquet")
+```
+
+# 14
+```{r}
+# 自治体データ読み込み
+df_14 <- read_parquet("your_directorydf_case_treated_14_LB12m_censor_main.parquet")
+
+# Date_last_followを作成：LF_24mかlmonの早い方
+df <- df_14 |> 
+  mutate(Date_last_follow_depression = pmin(LF_24m, lmon, Date_event_depression, na.rm = TRUE)) |> 
+  mutate(Date_last_follow_anxiety = pmin(LF_24m, lmon, Date_event_anxiety, na.rm = TRUE))
+```
+
+
+```{r}
+# long型で箱を作って処理
+# rtid3抽出
+df_long <- df |> 
+  select("rtid2")
+
+# 2018-04-01～2023-3-31までの箱を作る
+start_date <- as.Date("2018-04-01")
+end_date <- as.Date("2023-03-01")
+
+months <- tibble(month = seq.Date(start_date, end_date, by = "month"))
+
+df_long <- expand_grid(rtid2 = df_long$rtid2, actdat = months$month)
+```
+
+
+```{r}
+# MED_SINから必要検査項目を抽出
+# MED_SINデータの読み込み
+directory_path <- "your_directory/MED/14"
+files <- list.files(path =directory_path, pattern = "14_MED_SIN.*\\.parquet$", full.names = TRUE)
+
+# 空の箱を作る
+df_SIN <- data.frame()
+
+# 格納していく
+for (file in files){
+  df_temp <-read_parquet(file)|>
+    select(rtid2, actdat, sindai, sinkbn)|>
+    filter(sindai == "D" | sindai == "E")
+  
+  df_SIN <- bind_rows(df_SIN, df_temp)
+  
+  rm(df_temp)
+  gc()
+}
+
+
+
+df_SIN_2 <- df_SIN |> 
+  filter((sindai == "D" & sinkbn == "215") |
+           (sindai == "E" & sinkbn == "001") |
+           (sindai == "E" & sinkbn == "002") |
+           (sindai == "E" & sinkbn == "100") |
+           (sindai == "E" & sinkbn == "101") |
+           (sindai == "E" & sinkbn == "200") |
+           (sindai == "E" & sinkbn == "202"))
+
+df_SIN_2 <- df_SIN_2 |> 
+  filter(rtid2 != "_")
+
+df_SIN_2$actdat <- as.Date(paste0(df_SIN_2$actdat, "01"), format = "%Y%m%d")
+```
+
+```{r}
+# SIN情報を箱に追加
+df_comb <- df_long |> 
+  left_join(df_SIN_2, by = c("rtid2", "actdat"))
+
+# Date_entry列のみ抽出
+df_date_entry <- df_14 |> 
+  select("rtid2", "Date_entry")
+
+# Date_entryの結合と経過月の追加
+df_comb <- df_comb |> 
+  left_join(df_date_entry, by = "rtid2") |> 
+  mutate(time_from_entry = interval(Date_entry, actdat) %/% months(1)) |> 
+  filter(time_from_entry > 0)
+
+# 各列の要素がすべて同じ行は重複を削除
+df_comb <- df_comb |> 
+  distinct()
+
+# 24か月未満に限定
+df_comb <- df_comb |> 
+  filter(time_from_entry <= 24)
+
+write_parquet(df_comb, "df_comb_14.parquet")
+```
+
+# 経過月ごとに検査症例数
+```{r}
+# データの読み込み
+comb_1 <- read_parquet("your_directory/Cancer_depression/df_comb_1.parquet")
+comb_2 <- read_parquet("your_directory/Cancer_depression/df_comb_2.parquet")
+comb_3 <- read_parquet("your_directory/Cancer_depression/df_comb_3.parquet")
+comb_4 <- read_parquet("your_directory/Cancer_depression/df_comb_4.parquet")
+comb_5 <- read_parquet("your_directory/Cancer_depression/df_comb_5.parquet")
+comb_6 <- read_parquet("your_directory/Cancer_depression/df_comb_6.parquet")
+comb_7 <- read_parquet("your_directory/Cancer_depression/df_comb_7.parquet")
+comb_8 <- read_parquet("your_directory/Cancer_depression/df_comb_8.parquet")
+comb_9 <- read_parquet("your_directory/Cancer_depression/df_comb_9.parquet")
+comb_10 <- read_parquet("your_directory/Cancer_depression/df_comb_10.parquet")
+comb_11 <- read_parquet("your_directory/Cancer_depression/df_comb_11.parquet")
+comb_12 <- read_parquet("your_directory/Cancer_depression/df_comb_12.parquet")
+comb_13 <- read_parquet("your_directory/Cancer_depression/df_comb_13.parquet")
+comb_14 <- read_parquet("your_directory/Cancer_depression/df_comb_14.parquet")
+
+comb_all <- bind_rows(comb_1, comb_2, comb_3, comb_4, comb_5, comb_6, comb_7, comb_8, comb_9, comb_10, comb_11, comb_12, comb_13, comb_14)
+
+count <- comb_all |> 
+  group_by(time_from_entry, sinkbn) |> 
+  summarise(count = n(), .group = "drop")
+
+# エントリー直後の3ヶ月は除外
+ count <- count |> 
+   filter(time_from_entry >2)
+
+# D215: echo
+count_D215 <- count |> 
+  filter(sinkbn == "215")
+
+ggplot(count_D215, aes(x = time_from_entry, y = count))+
+  geom_bar(stat = "identity", fill = "skyblue", alpha = 0.8)+
+  labs(
+    title = "",
+    x = "Time from cancer diagnosis (months)",
+    y = "Number of patients with examinations"
+  )+
+  theme_minimal()
+
+# E001 or E002: Xp
+count_E001_E002 <- count |> 
+  filter((sinkbn == "001") | (sinkbn == "002"))
+
+ggplot(count_E001_E002, aes(x = time_from_entry, y = count))+
+  geom_bar(stat = "identity", fill = "skyblue", alpha = 0.8)+
+  labs(
+    title = "",
+    x = "Time from cancer diagnosis (months)",
+    y = "Number of patients with examinations"
+  )+
+  theme_minimal()
+
+# E100, E101: 核医学検査
+count_E110_E101 <- count |> 
+  filter((sinkbn == "100") | (sinkbn == "101"))
+
+ggplot(count_E110_E101, aes(x = time_from_entry, y = count))+
+  geom_bar(stat = "identity", fill = "skyblue", alpha = 0.8)+
+  labs(
+    title = "",
+    x = "Time from cancer diagnosis (months)",
+    y = "Number of patients with examinations"
+  )+
+  theme_minimal()
+
+# E200: CT
+count_E200 <- count |> 
+  filter(sinkbn == 200)
+
+ggplot(count_E200, aes(x = time_from_entry, y = count))+
+  geom_bar(stat = "identity", fill = "skyblue", alpha = 0.8)+
+  labs(
+    title = "",
+    x = "Time from cancer diagnosis (months)",
+    y = "Number of patients with examinations"
+  )+
+  theme_minimal()
+
+# E202: MRI
+count_E202 <- count |> 
+  filter(sinkbn == 202)
+
+ggplot(count_E202, aes(x = time_from_entry, y = count))+
+  geom_bar(stat = "identity", fill = "skyblue", alpha = 0.8)+
+  labs(
+    title = "",
+    x = "Time from cancer diagnosis (months)",
+    y = "Number of patients with examinations"
+  )+
+  theme_minimal()
+```
+
+
+

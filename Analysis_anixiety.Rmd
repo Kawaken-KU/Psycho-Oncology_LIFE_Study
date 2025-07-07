@@ -1,0 +1,924 @@
+---
+title: "Analysis_anixiety"
+author: "KKawaguchi"
+date: "2024-10-21"
+output: html_document
+---
+
+# ポワソン回帰による罹患率推定
+```{r}
+library(tidyverse)
+library(arrow)
+library(splines)
+library(rms)
+```
+
+# Overall
+# 不安障害：1000人月あたりの発症率
+```{r}
+setwd("your_directory")
+
+df_all <- read_parquet("your_directory/df_all_LB12_main.parquet")
+
+# 月ごとのイベント発生数をカウントデータとしてまとめる
+monthly_data_anxiety <- df_all |> 
+  rowwise() |> 
+  mutate(months_followed_anxiety = list(seq(Date_entry, Date_last_follow_anxiety, by = "month"))) |> 
+  unnest(cols = c(months_followed_anxiety)) |> 
+  mutate(month_since_entry = time_length(interval(Date_entry, months_followed_anxiety), "months")) |>
+  mutate(Event_anxiety_monthly = if_else(!is.na(Date_event_anxiety) & floor_date(Date_event_anxiety, "month") == months_followed_anxiety, 1, 0)) |> 
+  group_by(month_since_entry) |> 
+  summarise(
+    n_cases = n(),
+    n_events_anxiety = sum(Event_anxiety_monthly == 1)
+  ) |> 
+  filter(month_since_entry <= 24)
+
+# ポワソン回帰
+poisson_model_anxiety <- glm(n_events_anxiety ~ ns(month_since_entry, df = 7), 
+                                offset = log(n_cases), 
+                                family = poisson, 
+                                data = monthly_data_anxiety)
+
+# 予測値と95%CIの計算
+monthly_data_anxiety <- monthly_data_anxiety |> 
+  mutate(predicted_count_anxiety = predict(poisson_model_anxiety, type = "response"),
+         se_fit = predict(poisson_model_anxiety, type = "link", se.fit = TRUE)$se.fit,
+         log_pred = predict(poisson_model_anxiety, type = "link")) |> 
+  mutate(lower_ci = exp(log_pred - 1.96 * se_fit),
+         upper_ci = exp(log_pred + 1.96 * se_fit)) |> 
+  mutate(incidence_rate_1000pm = (n_events_anxiety / n_cases) * 1000,
+         predicted_rate_1000pm = (predicted_count_anxiety / n_cases) * 1000,
+         lower_ci_1000pm = (lower_ci / n_cases) * 1000,
+         upper_ci_1000pm = (upper_ci / n_cases) * 1000)
+
+# 可視化
+ggplot(monthly_data_anxiety, aes(x = month_since_entry)) +
+  geom_point(aes(y = incidence_rate_1000pm), color = "black") +
+  geom_line(aes(y = predicted_rate_1000pm), color = "orange", size = 1.1) +
+  geom_ribbon(aes(ymin = lower_ci_1000pm, ymax = upper_ci_1000pm), alpha = 0.2, fill = "orange") + 
+  labs(title = "All cases",
+       x = "", 
+       y = "Incidence rate (‰)") +
+  scale_x_continuous(breaks = seq(0, max(monthly_data_anxiety$month_since_entry), by = 2)) +
+  theme_minimal()+
+  theme(legend.position = "bottom")
+```
+
+# 不安障害：累積リスク
+```{r}
+# 累積リスクと95%CIの計算
+monthly_data_anxiety <- monthly_data_anxiety |> 
+  mutate(
+    # 累積ハザード
+    cumulative_hazard = cumsum(predicted_count_anxiety / n_cases),
+    cumulative_lower_ci_hazard = cumsum(lower_ci / n_cases),
+    cumulative_upper_ci_hazard = cumsum(upper_ci / n_cases),
+    cumulative_hazard_raw = cumsum(n_events_anxiety / n_cases),
+    
+    # 累積リスク
+    cumulative_risk = (1 - exp(-cumulative_hazard))*1000,
+    cumulative_lower_ci_risk = (1 - exp(-cumulative_lower_ci_hazard))*1000,
+    cumulative_upper_ci_risk = (1 - exp(-cumulative_upper_ci_hazard))*1000,
+    
+    # Rawリスク
+    cumulative_risk_raw = (1 - exp(-cumulative_hazard_raw))*1000
+  )
+
+# 累積リスクの可視化
+ggplot(monthly_data_anxiety, aes(x = month_since_entry)) +
+  geom_point(aes(y = cumulative_risk_raw), color = "black") + # 実測値
+  geom_line(aes(y = cumulative_risk), color = "purple", size = 1.1) +
+  geom_ribbon(aes(ymin = cumulative_lower_ci_risk, ymax = cumulative_upper_ci_risk), alpha = 0.2, fill = "purple") +
+  labs(
+    title = "All cases",
+    x = "",
+    y = "Cumulative risk (‰)"
+  ) +
+  scale_x_continuous(
+    breaks = seq(0, max(monthly_data_anxiety$month_since_entry), by = 2),
+    labels = seq(0, max(monthly_data_anxiety$month_since_entry), by = 2)
+  ) +
+  theme_minimal()+
+  theme(legend.position = "bottom")
+```
+
+
+# 性別：不安障害：発症率
+```{r}
+# 男性データのモデル構築と予測
+df_male <- df_all |> 
+  filter(sex == "1")
+
+monthly_data_anxiety_male <- df_male |> 
+  rowwise() |> 
+  mutate(months_followed_anxiety = list(seq(Date_entry, Date_last_follow_anxiety, by = "month"))) |> 
+  unnest(cols = c(months_followed_anxiety)) |> 
+  mutate(month_since_entry = time_length(interval(Date_entry, months_followed_anxiety), "months")) |> 
+  mutate(Event_anxiety_monthly = if_else(!is.na(Date_event_anxiety) & floor_date(Date_event_anxiety, "month") == months_followed_anxiety, 1, 0)) |> 
+  group_by(month_since_entry) |> 
+  summarise(
+    n_cases = n(),
+    n_events_anxiety = sum(Event_anxiety_monthly == 1)
+  ) |> 
+  filter(month_since_entry <= 24)
+
+poisson_model_anxiety_male <- glm(n_events_anxiety ~ ns(month_since_entry, df = 7), 
+                                offset = log(n_cases), 
+                                family = poisson, 
+                                data = monthly_data_anxiety_male)
+
+monthly_data_anxiety_male <- monthly_data_anxiety_male |> 
+  mutate(predicted_count_anxiety = predict(poisson_model_anxiety_male, type = "response"),
+         se_fit = predict(poisson_model_anxiety_male, type = "link", se.fit = TRUE)$se.fit,
+         log_pred = predict(poisson_model_anxiety_male, type = "link")) |> 
+  mutate(lower_ci = exp(log_pred - 1.96 * se_fit),
+         upper_ci = exp(log_pred + 1.96 * se_fit)) |> 
+  mutate(incidence_rate_1000pm = (n_events_anxiety / n_cases) * 1000,
+         predicted_rate_1000pm = (predicted_count_anxiety / n_cases) * 1000,
+         lower_ci_1000pm = (lower_ci / n_cases) * 1000,
+         upper_ci_1000pm = (upper_ci / n_cases) * 1000) |> 
+  mutate(Sex = "male")
+
+
+# 女性データのモデル構築と予測
+df_female <- df_all |> 
+  filter(sex == "2")
+
+monthly_data_anxiety_female <- df_female |> 
+  rowwise() |> 
+  mutate(months_followed_anxiety = list(seq(Date_entry, Date_last_follow_anxiety, by = "month"))) |> 
+  unnest(cols = c(months_followed_anxiety)) |> 
+  mutate(month_since_entry = time_length(interval(Date_entry, months_followed_anxiety), "months")) |>  
+  mutate(Event_anxiety_monthly = if_else(!is.na(Date_event_anxiety) & floor_date(Date_event_anxiety, "month") == months_followed_anxiety, 1, 0)) |> 
+  group_by(month_since_entry) |> 
+  summarise(
+    n_cases = n(),
+    n_events_anxiety = sum(Event_anxiety_monthly == 1)
+  ) |> 
+  filter(month_since_entry <= 24)
+
+poisson_model_anxiety_female <- glm(n_events_anxiety ~ ns(month_since_entry, df = 7), 
+                                offset = log(n_cases), 
+                                family = poisson, 
+                                data = monthly_data_anxiety_female)
+
+monthly_data_anxiety_female <- monthly_data_anxiety_female |> 
+  mutate(predicted_count_anxiety = predict(poisson_model_anxiety_female, type = "response"),
+         se_fit = predict(poisson_model_anxiety_female, type = "link", se.fit = TRUE)$se.fit,
+         log_pred = predict(poisson_model_anxiety_female, type = "link")) |> 
+  mutate(lower_ci = exp(log_pred - 1.96 * se_fit),
+         upper_ci = exp(log_pred + 1.96 * se_fit)) |> 
+  mutate(incidence_rate_1000pm = (n_events_anxiety / n_cases) * 1000,
+         predicted_rate_1000pm = (predicted_count_anxiety / n_cases) * 1000,
+         lower_ci_1000pm = (lower_ci / n_cases) * 1000,
+         upper_ci_1000pm = (upper_ci / n_cases) * 1000) |> 
+  mutate(Sex = "female")
+
+# 男女データを統合
+combined_data <- bind_rows(monthly_data_anxiety_male, monthly_data_anxiety_female)
+
+# 男女別罹患率の図
+ggplot(combined_data, aes(x = month_since_entry, y = predicted_rate_1000pm, color = factor(Sex))) +
+  #geom_point(aes(y = incidence_rate_1000pm), color = "black") +
+  geom_line(size = 1.1) +  # 罹患率の線
+  geom_ribbon(aes(ymin = lower_ci_1000pm, ymax = upper_ci_1000pm, fill = factor(Sex)), alpha = 0.2, color = NA) +  # 95%CIのリボン（境界線なし）
+  labs(
+    title = "Sex",
+    x = "",
+    y = "Incidence rate (‰)",
+    color = "Sex",
+    fill = "Sex"
+  ) +
+  scale_color_manual(values = c("red", "blue")) +  # 男女別の色（線）
+  scale_fill_manual(values = c("pink", "lightblue")) +  # 95%CIの塗りつぶし色
+  scale_x_continuous(
+    breaks = seq(0, max(combined_data$month_since_entry), by = 2),  # X軸のスケール
+    labels = seq(0, max(combined_data$month_since_entry), by = 2)
+  ) +
+  theme_minimal()+
+  theme(legend.position = c(0.5, -0.11),
+        legend.justification = c(0.5,0.5),
+        legend.direction = "horizontal")
+```
+
+# 性別：不安障害：累積リスク
+```{r}
+# 男性データの累積リスク計算
+monthly_data_anxiety_male <- monthly_data_anxiety_male |> 
+  mutate(
+    cumulative_hazard = cumsum(predicted_count_anxiety / n_cases),
+    cumulative_lower_ci_hazard = cumsum(lower_ci / n_cases),
+    cumulative_upper_ci_hazard = cumsum(upper_ci / n_cases),
+    cumulative_hazard_raw = cumsum(n_events_anxiety / n_cases),
+    
+    cumulative_risk = (1 - exp(-cumulative_hazard))*1000,
+    cumulative_lower_ci_risk = (1 - exp(-cumulative_lower_ci_hazard))*1000,
+    cumulative_upper_ci_risk = (1 - exp(-cumulative_upper_ci_hazard))*1000,
+    
+    cumulative_risk_raw = (1 - exp(-cumulative_hazard_raw))*1000)
+
+# 女性データの累積リスク計算
+monthly_data_anxiety_female <- monthly_data_anxiety_female |> 
+  mutate(cumulative_hazard = cumsum(predicted_count_anxiety / n_cases),
+    cumulative_lower_ci_hazard = cumsum(lower_ci / n_cases),
+    cumulative_upper_ci_hazard = cumsum(upper_ci / n_cases),
+    cumulative_hazard_raw = cumsum(n_events_anxiety / n_cases),
+    
+    cumulative_risk = (1 - exp(-cumulative_hazard))*1000,
+    cumulative_lower_ci_risk = (1 - exp(-cumulative_lower_ci_hazard))*1000,
+    cumulative_upper_ci_risk = (1 - exp(-cumulative_upper_ci_hazard))*1000,
+    
+    cumulative_risk_raw = (1 - exp(-cumulative_hazard_raw))*1000)
+
+# 男女データを統合
+combined_data_cumulative <- bind_rows(
+  monthly_data_anxiety_male,
+  monthly_data_anxiety_female
+)
+
+# 累積リスクの図示
+ggplot(combined_data_cumulative, aes(x = month_since_entry, y = cumulative_risk, color = factor(Sex))) +
+  geom_line(size = 1.1) +
+  geom_ribbon(aes(ymin = cumulative_lower_ci_risk, ymax = cumulative_upper_ci_risk, fill = factor(Sex)), alpha = 0.2, color = NA) +
+  labs(
+    title = "Sex",
+    x = "",
+    y = "Cumulative risk (‰)",
+    color = "Sex",
+    fill = "Sex"
+  ) +
+  scale_color_manual(values = c("red", "blue")) +  # 男女別の色（線）
+  scale_fill_manual(values = c("pink", "lightblue")) +  # 95%CIの塗りつぶし色
+  scale_x_continuous(
+    breaks = seq(0, max(combined_data_cumulative$month_since_entry), by = 2),
+    labels = seq(0, max(combined_data_cumulative$month_since_entry), by = 2)
+  ) +
+  theme_minimal()+
+   theme(legend.position = c(0.5, -0.11),
+        legend.justification = c(0.5,0.5),
+        legend.direction = "horizontal")
+```
+
+# 年齢：不安障害：発症率
+```{r}
+# 65歳以上データのモデル構築と予測
+df_old <- df_all |> 
+  filter(age_group == "1")
+
+monthly_data_anxiety_old <- df_old |> 
+  rowwise() |> 
+  mutate(months_followed_anxiety = list(seq(Date_entry, Date_last_follow_anxiety, by = "month"))) |> 
+  unnest(cols = c(months_followed_anxiety)) |> 
+  mutate(month_since_entry = time_length(interval(Date_entry, months_followed_anxiety), "months")) |>  
+  mutate(Event_anxiety_monthly = if_else(!is.na(Date_event_anxiety) & floor_date(Date_event_anxiety, "month") == months_followed_anxiety, 1, 0)) |> 
+  group_by(month_since_entry) |> 
+  summarise(
+    n_cases = n(),
+    n_events_anxiety = sum(Event_anxiety_monthly == 1)
+  ) |> 
+  filter(month_since_entry <= 24)
+
+poisson_model_anxiety_old <- glm(n_events_anxiety ~ ns(month_since_entry, df = 7), 
+                                offset = log(n_cases), 
+                                family = poisson, 
+                                data = monthly_data_anxiety_old)
+
+monthly_data_anxiety_old <- monthly_data_anxiety_old |> 
+  mutate(predicted_count_anxiety = predict(poisson_model_anxiety_old, type = "response"),
+         se_fit = predict(poisson_model_anxiety_old, type = "link", se.fit = TRUE)$se.fit,
+         log_pred = predict(poisson_model_anxiety_old, type = "link")) |> 
+  mutate(lower_ci = exp(log_pred - 1.96 * se_fit),
+         upper_ci = exp(log_pred + 1.96 * se_fit)) |> 
+  mutate(incidence_rate_1000pm = (n_events_anxiety / n_cases) * 1000,
+         predicted_rate_1000pm = (predicted_count_anxiety / n_cases) * 1000,
+         lower_ci_1000pm = (lower_ci / n_cases) * 1000,
+         upper_ci_1000pm = (upper_ci / n_cases) * 1000) |> 
+  mutate(Age_group = ">= 65y")
+
+# youngデータのモデル構築と予測
+df_young <- df_all |> 
+  filter(age_group == "0")
+
+monthly_data_anxiety_young <- df_young |> 
+  rowwise() |> 
+  mutate(months_followed_anxiety = list(seq(Date_entry, Date_last_follow_anxiety, by = "month"))) |> 
+  unnest(cols = c(months_followed_anxiety)) |> 
+  mutate(month_since_entry = time_length(interval(Date_entry, months_followed_anxiety), "months")) |>  
+  mutate(Event_anxiety_monthly = if_else(!is.na(Date_event_anxiety) & floor_date(Date_event_anxiety, "month") == months_followed_anxiety, 1, 0)) |> 
+  group_by(month_since_entry) |> 
+  summarise(
+    n_cases = n(),
+    n_events_anxiety = sum(Event_anxiety_monthly == 1)
+  ) |> 
+  filter(month_since_entry <= 24)
+
+poisson_model_anxiety_young <- glm(n_events_anxiety ~ ns(month_since_entry, df = 7), 
+                                offset = log(n_cases), 
+                                family = poisson, 
+                                data = monthly_data_anxiety_young)
+
+monthly_data_anxiety_young <- monthly_data_anxiety_young |> 
+  mutate(predicted_count_anxiety = predict(poisson_model_anxiety_young, type = "response"),
+         se_fit = predict(poisson_model_anxiety_young, type = "link", se.fit = TRUE)$se.fit,
+         log_pred = predict(poisson_model_anxiety_young, type = "link")) |> 
+  mutate(lower_ci = exp(log_pred - 1.96 * se_fit),
+         upper_ci = exp(log_pred + 1.96 * se_fit)) |> 
+  mutate(incidence_rate_1000pm = (n_events_anxiety / n_cases) * 1000,
+         predicted_rate_1000pm = (predicted_count_anxiety / n_cases) * 1000,
+         lower_ci_1000pm = (lower_ci / n_cases) * 1000,
+         upper_ci_1000pm = (upper_ci / n_cases) * 1000) |> 
+  mutate(Age_group = "< 65y")
+
+# データ統合
+combined_data <- bind_rows(monthly_data_anxiety_old, monthly_data_anxiety_young)
+
+# 図示
+ggplot(combined_data, aes(x = month_since_entry, y = predicted_rate_1000pm, color = factor(Age_group))) +
+  #geom_point(aes(y = incidence_rate_1000pm), color = "black") +
+  geom_line(size = 1.1) +  # 罹患率の線
+  geom_ribbon(aes(ymin = lower_ci_1000pm, ymax = upper_ci_1000pm, fill = factor(Age_group)), alpha = 0.2, color = NA) +  # 95%CIのリボン（境界線なし）
+  labs(
+    title = "Age group",
+    x = "",
+    y = "Incidence rate (‰)",
+    color = "Age",
+    fill = "Age"
+  ) +
+  scale_color_manual(values = c("red", "blue")) +  # 男女別の色（線）
+  scale_fill_manual(values = c("pink", "lightblue")) +  # 95%CIの塗りつぶし色
+  scale_x_continuous(
+    breaks = seq(0, max(combined_data$month_since_entry), by = 2),  # X軸のスケール
+    labels = seq(0, max(combined_data$month_since_entry), by = 2)
+  ) +
+  theme_minimal()+
+   theme(legend.position = c(0.5, -0.11),
+        legend.justification = c(0.5,0.5),
+        legend.direction = "horizontal")
+```
+
+# 年齢：不安障害：累積リスク
+```{r}
+# oldデータの累積リスク計算
+monthly_data_anxiety_old <- monthly_data_anxiety_old |> 
+  mutate(
+    cumulative_hazard = cumsum(predicted_count_anxiety / n_cases),
+    cumulative_lower_ci_hazard = cumsum(lower_ci / n_cases),
+    cumulative_upper_ci_hazard = cumsum(upper_ci / n_cases),
+    cumulative_hazard_raw = cumsum(n_events_anxiety / n_cases),
+    
+    cumulative_risk = (1 - exp(-cumulative_hazard))*1000,
+    cumulative_lower_ci_risk = (1 - exp(-cumulative_lower_ci_hazard))*1000,
+    cumulative_upper_ci_risk = (1 - exp(-cumulative_upper_ci_hazard))*1000,
+    
+    cumulative_risk_raw = (1 - exp(-cumulative_hazard_raw))*1000)
+
+# youngデータの累積リスク計算
+monthly_data_anxiety_young <- monthly_data_anxiety_young |> 
+  mutate(
+    cumulative_hazard = cumsum(predicted_count_anxiety / n_cases),
+    cumulative_lower_ci_hazard = cumsum(lower_ci / n_cases),
+    cumulative_upper_ci_hazard = cumsum(upper_ci / n_cases),
+    cumulative_hazard_raw = cumsum(n_events_anxiety / n_cases),
+    
+    cumulative_risk = (1 - exp(-cumulative_hazard))*1000,
+    cumulative_lower_ci_risk = (1 - exp(-cumulative_lower_ci_hazard))*1000,
+    cumulative_upper_ci_risk = (1 - exp(-cumulative_upper_ci_hazard))*1000,
+    
+    cumulative_risk_raw = (1 - exp(-cumulative_hazard_raw))*1000)
+
+# データを統合
+combined_data_cumulative <- bind_rows(
+  monthly_data_anxiety_old,
+  monthly_data_anxiety_young
+)
+
+# 累積リスクの図示
+ggplot(combined_data_cumulative, aes(x = month_since_entry, y = cumulative_risk, color = factor(Age_group))) +
+  geom_line(size = 1.1) +
+  geom_ribbon(aes(ymin = cumulative_lower_ci_risk, ymax = cumulative_upper_ci_risk, fill = factor(Age_group)), alpha = 0.2, color = NA) +
+  labs(
+    title = "Age group",
+    x = "",
+    y = "Cumulative risk (‰)",
+    color = "Age",
+    fill = "Age"
+  ) +
+  scale_color_manual(values = c("red", "blue")) +  
+  scale_fill_manual(values = c("pink", "lightblue")) + 
+  scale_x_continuous(
+    breaks = seq(0, max(combined_data_cumulative$month_since_entry), by = 2),
+    labels = seq(0, max(combined_data_cumulative$month_since_entry), by = 2)
+  ) +
+  theme_minimal()+
+  theme(legend.position = c(0.5, -0.11),
+        legend.justification = c(0.5,0.5),
+        legend.direction = "horizontal")
+```
+
+# Ope：不安障害：発生率
+```{r}
+# Ope=0データのモデル構築と予測
+df_all_solidcancer <- df_all |> 
+  filter(!str_starts(icd1, "^C81|^C81|^C83|^C84|^C85|^C86|^C96|^C88|^C90|^C91|^C92|^C93|^C94|^C95"))
+
+df_ope0 <- df_all_solidcancer |> 
+  filter(Ope == 0)
+
+monthly_data_anxiety_ope0 <- df_ope0 |> 
+  rowwise() |> 
+  mutate(months_followed_anxiety = list(seq(Date_entry, Date_last_follow_anxiety, by = "month"))) |> 
+  unnest(cols = c(months_followed_anxiety)) |> 
+  mutate(month_since_entry = time_length(interval(Date_entry, months_followed_anxiety), "months")) |>  
+  mutate(Event_anxiety_monthly = if_else(!is.na(Date_event_anxiety) & floor_date(Date_event_anxiety, "month") == months_followed_anxiety, 1, 0)) |> 
+  group_by(month_since_entry) |> 
+  summarise(
+    n_cases = n(),
+    n_events_anxiety = sum(Event_anxiety_monthly == 1)
+  ) |> 
+  filter(month_since_entry <= 24)
+
+poisson_model_anxiety_ope0 <- glm(n_events_anxiety ~ ns(month_since_entry, df = 7), 
+                                offset = log(n_cases), 
+                                family = poisson, 
+                                data = monthly_data_anxiety_ope0)
+
+monthly_data_anxiety_ope0 <- monthly_data_anxiety_ope0 |> 
+  mutate(predicted_count_anxiety = predict(poisson_model_anxiety_ope0, type = "response"),
+         se_fit = predict(poisson_model_anxiety_ope0, type = "link", se.fit = TRUE)$se.fit,
+         log_pred = predict(poisson_model_anxiety_ope0, type = "link")) |> 
+  mutate(lower_ci = exp(log_pred - 1.96 * se_fit),
+         upper_ci = exp(log_pred + 1.96 * se_fit)) |> 
+  mutate(incidence_rate_1000pm = (n_events_anxiety / n_cases) * 1000,
+         predicted_rate_1000pm = (predicted_count_anxiety / n_cases) * 1000,
+         lower_ci_1000pm = (lower_ci / n_cases) * 1000,
+         upper_ci_1000pm = (upper_ci / n_cases) * 1000) |> 
+  mutate(Ope = "No")
+
+# Ope=1データのモデル構築と予測
+df_ope1 <- df_all_solidcancer |> 
+  filter(Ope == 1)
+
+monthly_data_anxiety_ope1 <- df_ope1 |> 
+  rowwise() |> 
+  mutate(months_followed_anxiety = list(seq(Date_entry, Date_last_follow_anxiety, by = "month"))) |> 
+  unnest(cols = c(months_followed_anxiety)) |> 
+  mutate(month_since_entry = time_length(interval(Date_entry, months_followed_anxiety), "months")) |> 
+  mutate(Event_anxiety_monthly = if_else(!is.na(Date_event_anxiety) & floor_date(Date_event_anxiety, "month") == months_followed_anxiety, 1, 0)) |> 
+  group_by(month_since_entry) |> 
+  summarise(
+    n_cases = n(),
+    n_events_anxiety = sum(Event_anxiety_monthly == 1)
+  ) |> 
+  filter(month_since_entry <= 24)
+
+poisson_model_anxiety_ope1 <- glm(n_events_anxiety ~ ns(month_since_entry, df = 7), 
+                                offset = log(n_cases), 
+                                family = poisson, 
+                                data = monthly_data_anxiety_ope1)
+
+monthly_data_anxiety_ope1 <- monthly_data_anxiety_ope1 |> 
+  mutate(predicted_count_anxiety = predict(poisson_model_anxiety_ope1, type = "response"),
+         se_fit = predict(poisson_model_anxiety_ope1, type = "link", se.fit = TRUE)$se.fit,
+         log_pred = predict(poisson_model_anxiety_ope1, type = "link")) |> 
+  mutate(lower_ci = exp(log_pred - 1.96 * se_fit),
+         upper_ci = exp(log_pred + 1.96 * se_fit)) |> 
+  mutate(incidence_rate_1000pm = (n_events_anxiety / n_cases) * 1000,
+         predicted_rate_1000pm = (predicted_count_anxiety / n_cases) * 1000,
+         lower_ci_1000pm = (lower_ci / n_cases) * 1000,
+         upper_ci_1000pm = (upper_ci / n_cases) * 1000) |> 
+  mutate(Ope = "Yes")
+
+# データ統合
+combined_data <- bind_rows(monthly_data_anxiety_ope0, monthly_data_anxiety_ope1)
+
+# 図示
+ggplot(combined_data, aes(x = month_since_entry, y = predicted_rate_1000pm, color = factor(Ope))) +
+  #geom_point(aes(y = incidence_rate_1000pm), color = "black") +
+  geom_line(size = 1.1) +  # 罹患率の線
+  geom_ribbon(aes(ymin = lower_ci_1000pm, ymax = upper_ci_1000pm, fill = factor(Ope)), alpha = 0.2, color = NA) +  # 95%CIのリボン（境界線なし）
+  labs(
+    title = "Surgical treatment",
+    x = "",
+    y = "Incidence rate (‰)",
+    color = "Ope",
+    fill = "Ope"
+  ) +
+  scale_color_manual(values = c("red", "blue")) +  
+  scale_fill_manual(values = c("pink", "lightblue")) +  
+  scale_x_continuous(
+    breaks = seq(-2, max(combined_data$month_since_entry), by = 2),  
+    labels = seq(-2, max(combined_data$month_since_entry), by = 2)
+  ) +
+  theme_minimal()+
+  theme(legend.position = c(0.5, -0.11),
+        legend.justification = c(0.5,0.5),
+        legend.direction = "horizontal")
+```
+
+# Ope：不安障害：累積リスク
+```{r}
+# Ope = 0データの累積リスク計算
+monthly_data_anxiety_ope0 <- monthly_data_anxiety_ope0 |> 
+  mutate(
+    cumulative_hazard = cumsum(predicted_count_anxiety / n_cases),
+    cumulative_lower_ci_hazard = cumsum(lower_ci / n_cases),
+    cumulative_upper_ci_hazard = cumsum(upper_ci / n_cases),
+    cumulative_hazard_raw = cumsum(n_events_anxiety / n_cases),
+    
+    cumulative_risk = (1 - exp(-cumulative_hazard))*1000,
+    cumulative_lower_ci_risk = (1 - exp(-cumulative_lower_ci_hazard))*1000,
+    cumulative_upper_ci_risk = (1 - exp(-cumulative_upper_ci_hazard))*1000,
+    
+    cumulative_risk_raw = (1 - exp(-cumulative_hazard_raw))*1000)
+
+# ope1データの累積リスク計算
+monthly_data_anxiety_ope1 <- monthly_data_anxiety_ope1 |> 
+  mutate(
+    cumulative_hazard = cumsum(predicted_count_anxiety / n_cases),
+    cumulative_lower_ci_hazard = cumsum(lower_ci / n_cases),
+    cumulative_upper_ci_hazard = cumsum(upper_ci / n_cases),
+    cumulative_hazard_raw = cumsum(n_events_anxiety / n_cases),
+    
+    cumulative_risk = (1 - exp(-cumulative_hazard))*1000,
+    cumulative_lower_ci_risk = (1 - exp(-cumulative_lower_ci_hazard))*1000,
+    cumulative_upper_ci_risk = (1 - exp(-cumulative_upper_ci_hazard))*1000,
+    
+    cumulative_risk_raw = (1 - exp(-cumulative_hazard_raw))*1000)
+
+# データを統合
+combined_data_cumulative <- bind_rows(
+  monthly_data_anxiety_ope0,
+  monthly_data_anxiety_ope1
+)
+
+# 累積リスクの図示
+ggplot(combined_data_cumulative, aes(x = month_since_entry, y = cumulative_risk, color = factor(Ope))) +
+  geom_line(size = 1.1) +
+  geom_ribbon(aes(ymin = cumulative_lower_ci_risk, ymax = cumulative_upper_ci_risk, fill = factor(Ope)), alpha = 0.2, color = NA) +
+  labs(
+    title = "Surgical treatment",
+    x = "",
+    y = "Cumulative risk (‰)",
+    color = "Ope",
+    fill = "Ope"
+  ) +
+  scale_color_manual(values = c("red", "blue")) +  
+  scale_fill_manual(values = c("pink", "lightblue")) + 
+  scale_x_continuous(
+    breaks = seq(0, max(combined_data_cumulative$month_since_entry), by = 2),
+    labels = seq(0, max(combined_data_cumulative$month_since_entry), by = 2)
+  ) +
+  theme_minimal()+
+  theme(legend.position = c(0.5, -0.11),
+        legend.justification = c(0.5,0.5),
+        legend.direction = "horizontal")
+```
+
+# Chemotherapy：不安障害：発生率
+```{r}
+# Chemotherapyデータのモデル構築と予測
+df_CT0 <- df_all |> 
+  filter(Chemotherapy == 0)
+
+monthly_data_anxiety_CT0 <- df_CT0 |> 
+  rowwise() |> 
+  mutate(months_followed_anxiety = list(seq(Date_entry, Date_last_follow_anxiety, by = "month"))) |> 
+  unnest(cols = c(months_followed_anxiety)) |> 
+  mutate(month_since_entry = time_length(interval(Date_entry, months_followed_anxiety), "months")) |>  
+  mutate(Event_anxiety_monthly = if_else(!is.na(Date_event_anxiety) & floor_date(Date_event_anxiety, "month") == months_followed_anxiety, 1, 0)) |> 
+  group_by(month_since_entry) |> 
+  summarise(
+    n_cases = n(),
+    n_events_anxiety = sum(Event_anxiety_monthly == 1)
+  ) |> 
+  filter(month_since_entry <= 24)
+
+poisson_model_anxiety_CT0 <- glm(n_events_anxiety ~ ns(month_since_entry, df = 7),
+                                offset = log(n_cases), 
+                                family = poisson, 
+                                data = monthly_data_anxiety_CT0)
+
+monthly_data_anxiety_CT0 <- monthly_data_anxiety_CT0 |> 
+  mutate(predicted_count_anxiety = predict(poisson_model_anxiety_CT0, type = "response"),
+         se_fit = predict(poisson_model_anxiety_CT0, type = "link", se.fit = TRUE)$se.fit,
+         log_pred = predict(poisson_model_anxiety_CT0, type = "link")) |> 
+  mutate(lower_ci = exp(log_pred - 1.96 * se_fit),
+         upper_ci = exp(log_pred + 1.96 * se_fit)) |> 
+  mutate(incidence_rate_1000pm = (n_events_anxiety / n_cases) * 1000,
+         predicted_rate_1000pm = (predicted_count_anxiety / n_cases) * 1000,
+         lower_ci_1000pm = (lower_ci / n_cases) * 1000,
+         upper_ci_1000pm = (upper_ci / n_cases) * 1000) |> 
+  mutate(CT = "No")
+
+# Chemotherapy=1データのモデル構築と予測
+df_CT1 <- df_all |> 
+  filter(Chemotherapy == "1")
+
+monthly_data_anxiety_CT1 <- df_CT1 |> 
+  rowwise() |> 
+  mutate(months_followed_anxiety = list(seq(Date_entry, Date_last_follow_anxiety, by = "month"))) |> 
+  unnest(cols = c(months_followed_anxiety)) |> 
+  mutate(month_since_entry = time_length(interval(Date_entry, months_followed_anxiety), "months")) |>  
+  mutate(Event_anxiety_monthly = if_else(!is.na(Date_event_anxiety) & floor_date(Date_event_anxiety, "month") == months_followed_anxiety, 1, 0)) |> 
+  group_by(month_since_entry) |> 
+  summarise(
+    n_cases = n(),
+    n_events_anxiety = sum(Event_anxiety_monthly == 1)
+  ) |> 
+  filter(month_since_entry <= 24)
+
+poisson_model_anxiety_CT1 <- glm(n_events_anxiety ~ ns(month_since_entry, df = 7),
+                                offset = log(n_cases), 
+                                family = poisson, 
+                                data = monthly_data_anxiety_CT1)
+
+monthly_data_anxiety_CT1 <- monthly_data_anxiety_CT1 |> 
+  mutate(predicted_count_anxiety = predict(poisson_model_anxiety_CT1, type = "response"),
+         se_fit = predict(poisson_model_anxiety_CT1, type = "link", se.fit = TRUE)$se.fit,
+         log_pred = predict(poisson_model_anxiety_CT1, type = "link")) |> 
+  mutate(lower_ci = exp(log_pred - 1.96 * se_fit),
+         upper_ci = exp(log_pred + 1.96 * se_fit)) |> 
+  mutate(incidence_rate_1000pm = (n_events_anxiety / n_cases) * 1000,
+         predicted_rate_1000pm = (predicted_count_anxiety / n_cases) * 1000,
+         lower_ci_1000pm = (lower_ci / n_cases) * 1000,
+         upper_ci_1000pm = (upper_ci / n_cases) * 1000) |> 
+  mutate(CT = "Yes")
+
+# データ統合
+combined_data <- bind_rows(monthly_data_anxiety_CT0, monthly_data_anxiety_CT1)
+
+# 図示
+ggplot(combined_data, aes(x = month_since_entry, y = predicted_rate_1000pm, color = factor(CT))) +
+  #geom_point(aes(y = incidence_rate_1000pm), color = "black") +
+  geom_line(size = 1.1) +  # 罹患率の線
+  geom_ribbon(aes(ymin = lower_ci_1000pm, ymax = upper_ci_1000pm, fill = factor(CT)), alpha = 0.2, color = NA) + 
+  labs(
+    title = "Chemotherapy",
+    x = "",
+    y = "Incidence rate (‰)",
+    color = "Chemo",
+    fill = "Chemo"
+  ) +
+  scale_color_manual(values = c("red", "blue")) +  # 男女別の色（線）
+  scale_fill_manual(values = c("pink", "lightblue")) +  # 95%CIの塗りつぶし色
+  scale_x_continuous(
+    breaks = seq(0, max(combined_data$month_since_entry), by = 2),  # X軸のスケール
+    labels = seq(0, max(combined_data$month_since_entry), by = 2)
+  ) +
+  theme_minimal()+
+  theme(legend.position = c(0.5, -0.11),
+        legend.justification = c(0.5,0.5),
+        legend.direction = "horizontal")
+```
+
+# Chemotherapy：不安障害：累積リスク
+```{r}
+# Chemotherapy = 0データの累積リスク計算
+monthly_data_anxiety_CT0 <- monthly_data_anxiety_CT0 |> 
+  mutate(
+    cumulative_hazard = cumsum(predicted_count_anxiety / n_cases),
+    cumulative_lower_ci_hazard = cumsum(lower_ci / n_cases),
+    cumulative_upper_ci_hazard = cumsum(upper_ci / n_cases),
+    cumulative_hazard_raw = cumsum(n_events_anxiety / n_cases),
+    
+    cumulative_risk = (1 - exp(-cumulative_hazard))*1000,
+    cumulative_lower_ci_risk = (1 - exp(-cumulative_lower_ci_hazard))*1000,
+    cumulative_upper_ci_risk = (1 - exp(-cumulative_upper_ci_hazard))*1000,
+    
+    cumulative_risk_raw = (1 - exp(-cumulative_hazard_raw))*1000)
+
+# Chemotherapy = 1データの累積リスク計算
+monthly_data_anxiety_CT1 <- monthly_data_anxiety_CT1 |> 
+  mutate(
+    cumulative_hazard = cumsum(predicted_count_anxiety / n_cases),
+    cumulative_lower_ci_hazard = cumsum(lower_ci / n_cases),
+    cumulative_upper_ci_hazard = cumsum(upper_ci / n_cases),
+    cumulative_hazard_raw = cumsum(n_events_anxiety / n_cases),
+    
+    cumulative_risk = (1 - exp(-cumulative_hazard))*1000,
+    cumulative_lower_ci_risk = (1 - exp(-cumulative_lower_ci_hazard))*1000,
+    cumulative_upper_ci_risk = (1 - exp(-cumulative_upper_ci_hazard))*1000,
+    
+    cumulative_risk_raw = (1 - exp(-cumulative_hazard_raw))*1000)
+
+# データを統合
+combined_data_cumulative <- bind_rows(
+  monthly_data_anxiety_CT0,
+  monthly_data_anxiety_CT1
+)
+
+# 累積リスクの図示
+ggplot(combined_data_cumulative, aes(x = month_since_entry, y = cumulative_risk, color = factor(CT))) +
+  geom_line(size = 1.1) +
+  geom_ribbon(aes(ymin = cumulative_lower_ci_risk, ymax = cumulative_upper_ci_risk, fill = factor(CT)), alpha = 0.2, color = NA) +
+  labs(
+    title = "Chemotherapy",
+    x = "",
+    y = "Cumulative risk (‰)",
+    color = "CT",
+    fill = "CT"
+  ) +
+  scale_color_manual(values = c("red", "blue")) +  
+  scale_fill_manual(values = c("pink", "lightblue")) + 
+  scale_x_continuous(
+    breaks = seq(0, max(combined_data_cumulative$month_since_entry), by = 2),
+    labels = seq(0, max(combined_data_cumulative$month_since_entry), by = 2)
+  ) +
+  theme_minimal()+
+  theme(legend.position = c(0.5, -0.11),
+        legend.justification = c(0.5,0.5),
+        legend.direction = "horizontal")
+```
+
+# Radiation：不安障害：発症率
+```{r}
+# Radiation=0データのモデル構築と予測
+df_all_solidcancer <- df_all |> 
+  filter(!str_starts(icd1, "^C81|^C81|^C83|^C84|^C85|^C86|^C96|^C88|^C90|^C91|^C92|^C93|^C94|^C95"))
+
+df_RT0 <- df_all_solidcancer |> 
+  filter(Radiation == 0)
+
+monthly_data_anxiety_RT0 <- df_RT0 |> 
+  rowwise() |> 
+  mutate(months_followed_anxiety = list(seq(Date_entry, Date_last_follow_anxiety, by = "month"))) |> 
+  unnest(cols = c(months_followed_anxiety)) |> 
+  mutate(month_since_entry = time_length(interval(Date_entry, months_followed_anxiety), "months")) |>  
+  mutate(Event_anxiety_monthly = if_else(!is.na(Date_event_anxiety) & floor_date(Date_event_anxiety, "month") == months_followed_anxiety, 1, 0)) |> 
+  group_by(month_since_entry) |> 
+  summarise(
+    n_cases = n(),
+    n_events_anxiety = sum(Event_anxiety_monthly == 1)
+  ) |> 
+  filter(month_since_entry <=24)
+
+poisson_model_anxiety_RT0 <- glm(n_events_anxiety ~ ns(month_since_entry, df = 7), 
+                                offset = log(n_cases), 
+                                family = poisson, 
+                                data = monthly_data_anxiety_RT0)
+
+monthly_data_anxiety_RT0 <- monthly_data_anxiety_RT0 |> 
+  mutate(predicted_count_anxiety = predict(poisson_model_anxiety_RT0, type = "response"),
+         se_fit = predict(poisson_model_anxiety_RT0, type = "link", se.fit = TRUE)$se.fit,
+         log_pred = predict(poisson_model_anxiety_RT0, type = "link")) |> 
+  mutate(lower_ci = exp(log_pred - 1.96 * se_fit),
+         upper_ci = exp(log_pred + 1.96 * se_fit)) |> 
+  mutate(incidence_rate_1000pm = (n_events_anxiety / n_cases) * 1000,
+         predicted_rate_1000pm = (predicted_count_anxiety / n_cases) * 1000,
+         lower_ci_1000pm = (lower_ci / n_cases) * 1000,
+         upper_ci_1000pm = (upper_ci / n_cases) * 1000) |> 
+  mutate(RT = "No")
+
+# Radiation=1データのモデル構築と予測
+df_RT1 <- df_all_solidcancer |> 
+  filter(Radiation == 1)
+
+monthly_data_anxiety_RT1 <- df_RT1 |> 
+  rowwise() |> 
+  mutate(months_followed_anxiety = list(seq(Date_entry, Date_last_follow_anxiety, by = "month"))) |> 
+  unnest(cols = c(months_followed_anxiety)) |> 
+  mutate(month_since_entry = time_length(interval(Date_entry, months_followed_anxiety), "months")) |> 
+  mutate(Event_anxiety_monthly = if_else(!is.na(Date_event_anxiety) & floor_date(Date_event_anxiety, "month") == months_followed_anxiety, 1, 0)) |> 
+  group_by(month_since_entry) |> 
+  summarise(
+    n_cases = n(),
+    n_events_anxiety = sum(Event_anxiety_monthly == 1)
+  ) |> 
+  filter(month_since_entry <= 24)
+
+poisson_model_anxiety_RT1 <- glm(n_events_anxiety ~ ns(month_since_entry, df = 7), 
+                                offset = log(n_cases), 
+                                family = poisson, 
+                                data = monthly_data_anxiety_RT1)
+
+monthly_data_anxiety_RT1 <- monthly_data_anxiety_RT1 |> 
+  mutate(predicted_count_anxiety = predict(poisson_model_anxiety_RT1, type = "response"),
+         se_fit = predict(poisson_model_anxiety_RT1, type = "link", se.fit = TRUE)$se.fit,
+         log_pred = predict(poisson_model_anxiety_RT1, type = "link")) |> 
+  mutate(lower_ci = exp(log_pred - 1.96 * se_fit),
+         upper_ci = exp(log_pred + 1.96 * se_fit)) |> 
+  mutate(incidence_rate_1000pm = (n_events_anxiety / n_cases) * 1000,
+         predicted_rate_1000pm = (predicted_count_anxiety / n_cases) * 1000,
+         lower_ci_1000pm = (lower_ci / n_cases) * 1000,
+         upper_ci_1000pm = (upper_ci / n_cases) * 1000) |> 
+  mutate(RT = "Yes")
+
+# データ統合
+combined_data <- bind_rows(monthly_data_anxiety_RT0, monthly_data_anxiety_RT1)
+
+# 図示
+ggplot(combined_data, aes(x = month_since_entry, y = predicted_rate_1000pm, color = factor(RT))) +
+  #geom_point(aes(y = incidence_rate_1000pm), color = "black") +
+  geom_line(size = 1.1) +  
+  geom_ribbon(aes(ymin = lower_ci_1000pm, ymax = upper_ci_1000pm, fill = factor(RT)), alpha = 0.2, color = NA) + 
+  labs(
+    title = "Radiotherapy",
+    x = "",
+    y = "Incidence rate (‰)",
+    color = "RT",
+    fill = "RT"
+  ) +
+  scale_color_manual(values = c("red", "blue")) +  
+  scale_fill_manual(values = c("pink", "lightblue")) +  
+  scale_x_continuous(
+    breaks = seq(0, max(combined_data$month_since_entry), by = 2),  
+    labels = seq(0, max(combined_data$month_since_entry), by = 2)
+  ) +
+  theme_minimal()+
+  theme(legend.position = c(0.5, -0.11),
+        legend.justification = c(0.5,0.5),
+        legend.direction = "horizontal")
+```
+
+# Radiation：不安障害：累積リスク
+```{r}
+# RT = 0データの累積リスク計算
+monthly_data_anxiety_RT0 <- monthly_data_anxiety_RT0 |> 
+  mutate(
+    cumulative_hazard = cumsum(predicted_count_anxiety / n_cases),
+    cumulative_lower_ci_hazard = cumsum(lower_ci / n_cases),
+    cumulative_upper_ci_hazard = cumsum(upper_ci / n_cases),
+    cumulative_hazard_raw = cumsum(n_events_anxiety / n_cases),
+    
+    cumulative_risk = (1 - exp(-cumulative_hazard))*1000,
+    cumulative_lower_ci_risk = (1 - exp(-cumulative_lower_ci_hazard))*1000,
+    cumulative_upper_ci_risk = (1 - exp(-cumulative_upper_ci_hazard))*1000,
+    
+    cumulative_risk_raw = (1 - exp(-cumulative_hazard_raw))*1000)
+
+# RT1データの累積リスク計算
+monthly_data_anxiety_RT1 <- monthly_data_anxiety_RT1 |> 
+  mutate(
+    cumulative_hazard = cumsum(predicted_count_anxiety / n_cases),
+    cumulative_lower_ci_hazard = cumsum(lower_ci / n_cases),
+    cumulative_upper_ci_hazard = cumsum(upper_ci / n_cases),
+    cumulative_hazard_raw = cumsum(n_events_anxiety / n_cases),
+    
+    cumulative_risk = (1 - exp(-cumulative_hazard))*1000,
+    cumulative_lower_ci_risk = (1 - exp(-cumulative_lower_ci_hazard))*1000,
+    cumulative_upper_ci_risk = (1 - exp(-cumulative_upper_ci_hazard))*1000,
+    
+    cumulative_risk_raw = (1 - exp(-cumulative_hazard_raw))*1000)
+
+# データを統合
+combined_data_cumulative <- bind_rows(
+  monthly_data_anxiety_RT0,
+  monthly_data_anxiety_RT1
+)
+
+# 累積リスクの図示
+ggplot(combined_data_cumulative, aes(x = month_since_entry, y = cumulative_risk, color = factor(RT))) +
+  geom_line(size = 1.1) +
+  geom_ribbon(aes(ymin = cumulative_lower_ci_risk, ymax = cumulative_upper_ci_risk, fill = factor(RT)), alpha = 0.2, color = NA) +
+  labs(
+    title = "Radiotherapy",
+    x = "",
+    y = "Cumulative risk (‰)",
+    color = "RT",
+    fill = "RT"
+  ) +
+  scale_color_manual(values = c("red", "blue")) +  
+  scale_fill_manual(values = c("pink", "lightblue")) + 
+  scale_x_continuous(
+    breaks = seq(0, max(combined_data_cumulative$month_since_entry), by = 2),
+    labels = seq(0, max(combined_data_cumulative$month_since_entry), by = 2)
+  ) +
+  theme_minimal()+
+ theme(legend.position = c(0.5, -0.11),
+        legend.justification = c(0.5,0.5),
+        legend.direction = "horizontal")
+```
+
+# 多変量解析：不安障害
+```{r}
+df <- read_parquet("your_directory/df_all_LB12_main.parquet")
+
+df_solidcancer <- df |> 
+  filter(!str_starts(icd1, "^C81|^C81|^C83|^C84|^C85|^C86|^C96|^C88|^C90|^C91|^C92|^C93|^C94|^C95"))
+
+# グループ化
+group_data_anxiety <- df_solidcancer |> 
+  group_by(sex, age_group, Ope, Chemotherapy, Radiation) |> 
+  summarise(
+    Event = sum(Event_anxiety),
+    Persontime = sum(risk_months_anxiety)
+  ) |> 
+  ungroup()
+
+# ポワソン回帰
+poisson_model <- glm(
+  Event ~ sex + age_group + Ope + Chemotherapy + Radiation,
+  family = poisson(link = "log"),
+  offset = log(Persontime),
+  data = group_data_anxiety
+)
+
+summary(poisson_model)
+
+irr <- exp(coef(poisson_model))
+print(irr)
+
+irr_ci <- exp(confint(poisson_model))
+print(irr_ci)
+```

@@ -1,0 +1,1205 @@
+---
+title: "Analysis_subtype"
+author: "Kazuya Honda"
+date: "2024-11-25"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+library(arrow)
+library(splines)
+```
+
+```{r}
+setwd("your_directory")
+
+df_all <- read_parquet("your_directory/df_all_LB12_main.parquet")
+```
+
+# メジャーがん：うつ病：発症率
+```{r}
+# メジャ－がん＝大腸癌、肺癌、胃癌、乳癌、前立腺癌、膵癌、肝臓癌 と定義
+#大腸癌
+df_subtype <- df_all |> 
+  filter(Cancer_category_detail == "Colorectum")
+
+monthly_data_depression <- df_subtype |> 
+  rowwise() |> 
+  mutate(months_followed_depression = list(seq(Date_entry, Date_last_follow_depression, by = "month"))) |> 
+  unnest(cols = c(months_followed_depression)) |> 
+  mutate(month_since_entry = time_length(interval(Date_entry, months_followed_depression), "months")) |> 
+  mutate(Event_depression_monthly = if_else(!is.na(Date_event_depression) & floor_date(Date_event_depression, "month") == months_followed_depression, 1, 0)) |> 
+  group_by(month_since_entry) |> 
+  summarise(
+    n_cases = n(),
+    n_events_depression = sum(Event_depression_monthly == 1)
+  ) |> 
+  filter(month_since_entry <= 24)
+
+poisson_model_depression <- glm(n_events_depression ~ ns(month_since_entry, df = 7), 
+                                offset = log(n_cases), 
+                                family = poisson, 
+                                data = monthly_data_depression)
+
+monthly_data_depression_colorectum <- monthly_data_depression |> 
+  mutate(predicted_count_depression = predict(poisson_model_depression, type = "response"),
+         se_fit = predict(poisson_model_depression, type = "link", se.fit = TRUE)$se.fit,
+         log_pred = predict(poisson_model_depression, type = "link")) |> 
+  mutate(lower_ci = exp(log_pred - 1.96 * se_fit),
+         upper_ci = exp(log_pred + 1.96 * se_fit)) |> 
+  mutate(incidence_rate_1000pm = (n_events_depression / n_cases) * 1000,
+         predicted_count_1000pm = (predicted_count_depression / n_cases) * 1000,
+         lower_ci_1000pm = (lower_ci / n_cases) * 1000,
+         upper_ci_1000pm = (upper_ci / n_cases) * 1000) |> 
+  mutate(Cancer_type = "Colorectum")
+
+#肺癌
+df_subtype <- df_all |> 
+  filter(Cancer_category_detail == "Lung")
+
+monthly_data_depression <- df_subtype |> 
+  rowwise() |> 
+  mutate(months_followed_depression = list(seq(Date_entry, Date_last_follow_depression, by = "month"))) |> 
+  unnest(cols = c(months_followed_depression)) |> 
+  mutate(month_since_entry = time_length(interval(Date_entry, months_followed_depression), "months")) |> 
+  mutate(Event_depression_monthly = if_else(!is.na(Date_event_depression) & floor_date(Date_event_depression, "month") == months_followed_depression, 1, 0)) |> 
+  group_by(month_since_entry) |> 
+  summarise(
+    n_cases = n(),
+    n_events_depression = sum(Event_depression_monthly == 1)
+  ) |> 
+  filter(month_since_entry <= 24)
+
+poisson_model_depression <- glm(n_events_depression ~ ns(month_since_entry, df = 7), 
+                                offset = log(n_cases), 
+                                family = poisson, 
+                                data = monthly_data_depression)
+
+monthly_data_depression_lung <- monthly_data_depression |> 
+  mutate(predicted_count_depression = predict(poisson_model_depression, type = "response"),
+         se_fit = predict(poisson_model_depression, type = "link", se.fit = TRUE)$se.fit,
+         log_pred = predict(poisson_model_depression, type = "link")) |> 
+  mutate(lower_ci = exp(log_pred - 1.96 * se_fit),
+         upper_ci = exp(log_pred + 1.96 * se_fit)) |> 
+  mutate(incidence_rate_1000pm = (n_events_depression / n_cases) * 1000,
+         predicted_count_1000pm = (predicted_count_depression / n_cases) * 1000,
+         lower_ci_1000pm = (lower_ci / n_cases) * 1000,
+         upper_ci_1000pm = (upper_ci / n_cases) * 1000) |> 
+  mutate(Cancer_type = "Lung")
+
+# 胃癌
+df_subtype <- df_all |> 
+  filter(Cancer_category_detail == "Stomach")
+
+monthly_data_depression <- df_subtype |> 
+  rowwise() |> 
+  mutate(months_followed_depression = list(seq(Date_entry, Date_last_follow_depression, by = "month"))) |> 
+  unnest(cols = c(months_followed_depression)) |> 
+  mutate(month_since_entry = time_length(interval(Date_entry, months_followed_depression), "months")) |> 
+  mutate(Event_depression_monthly = if_else(!is.na(Date_event_depression) & floor_date(Date_event_depression, "month") == months_followed_depression, 1, 0)) |> 
+  group_by(month_since_entry) |> 
+  summarise(
+    n_cases = n(),
+    n_events_depression = sum(Event_depression_monthly == 1)
+  ) |> 
+  filter(month_since_entry <= 24)
+
+poisson_model_depression <- glm(n_events_depression ~ ns(month_since_entry, df = 7), 
+                                offset = log(n_cases), 
+                                family = poisson, 
+                                data = monthly_data_depression)
+
+monthly_data_depression_stomach <- monthly_data_depression |> 
+  mutate(predicted_count_depression = predict(poisson_model_depression, type = "response"),
+         se_fit = predict(poisson_model_depression, type = "link", se.fit = TRUE)$se.fit,
+         log_pred = predict(poisson_model_depression, type = "link")) |> 
+  mutate(lower_ci = exp(log_pred - 1.96 * se_fit),
+         upper_ci = exp(log_pred + 1.96 * se_fit)) |> 
+  mutate(incidence_rate_1000pm = (n_events_depression / n_cases) * 1000,
+         predicted_count_1000pm = (predicted_count_depression / n_cases) * 1000,
+         lower_ci_1000pm = (lower_ci / n_cases) * 1000,
+         upper_ci_1000pm = (upper_ci / n_cases) * 1000) |> 
+  mutate(Cancer_type = "Stomach")
+
+# 乳癌
+df_subtype <- df_all |> 
+  filter(Cancer_category_detail == "Breast")
+
+monthly_data_depression <- df_subtype |> 
+  rowwise() |> 
+  mutate(months_followed_depression = list(seq(Date_entry, Date_last_follow_depression, by = "month"))) |> 
+  unnest(cols = c(months_followed_depression)) |> 
+  mutate(month_since_entry = time_length(interval(Date_entry, months_followed_depression), "months")) |> 
+  mutate(Event_depression_monthly = if_else(!is.na(Date_event_depression) & floor_date(Date_event_depression, "month") == months_followed_depression, 1, 0)) |> 
+  group_by(month_since_entry) |> 
+  summarise(
+    n_cases = n(),
+    n_events_depression = sum(Event_depression_monthly == 1)
+  ) |> 
+  filter(month_since_entry <= 24)
+
+poisson_model_depression <- glm(n_events_depression ~ ns(month_since_entry, df = 7), 
+                                offset = log(n_cases), 
+                                family = poisson, 
+                                data = monthly_data_depression)
+
+monthly_data_depression_breast <- monthly_data_depression |> 
+  mutate(predicted_count_depression = predict(poisson_model_depression, type = "response"),
+         se_fit = predict(poisson_model_depression, type = "link", se.fit = TRUE)$se.fit,
+         log_pred = predict(poisson_model_depression, type = "link")) |> 
+  mutate(lower_ci = exp(log_pred - 1.96 * se_fit),
+         upper_ci = exp(log_pred + 1.96 * se_fit)) |> 
+  mutate(incidence_rate_1000pm = (n_events_depression / n_cases) * 1000,
+         predicted_count_1000pm = (predicted_count_depression / n_cases) * 1000,
+         lower_ci_1000pm = (lower_ci / n_cases) * 1000,
+         upper_ci_1000pm = (upper_ci / n_cases) * 1000) |> 
+  mutate(Cancer_type = "Breast")
+
+# 前立腺癌
+df_subtype <- df_all |> 
+  filter(Cancer_category_detail == "Prostate")
+
+monthly_data_depression <- df_subtype |> 
+  rowwise() |> 
+  mutate(months_followed_depression = list(seq(Date_entry, Date_last_follow_depression, by = "month"))) |> 
+  unnest(cols = c(months_followed_depression)) |> 
+  mutate(month_since_entry = time_length(interval(Date_entry, months_followed_depression), "months")) |> 
+  mutate(Event_depression_monthly = if_else(!is.na(Date_event_depression) & floor_date(Date_event_depression, "month") == months_followed_depression, 1, 0)) |> 
+  group_by(month_since_entry) |> 
+  summarise(
+    n_cases = n(),
+    n_events_depression = sum(Event_depression_monthly == 1)
+  ) |> 
+  filter(month_since_entry <= 24)
+
+poisson_model_depression <- glm(n_events_depression ~ ns(month_since_entry, df = 7), 
+                                offset = log(n_cases), 
+                                family = poisson, 
+                                data = monthly_data_depression)
+
+monthly_data_depression_prostate <- monthly_data_depression |> 
+  mutate(predicted_count_depression = predict(poisson_model_depression, type = "response"),
+         se_fit = predict(poisson_model_depression, type = "link", se.fit = TRUE)$se.fit,
+         log_pred = predict(poisson_model_depression, type = "link")) |> 
+  mutate(lower_ci = exp(log_pred - 1.96 * se_fit),
+         upper_ci = exp(log_pred + 1.96 * se_fit)) |> 
+  mutate(incidence_rate_1000pm = (n_events_depression / n_cases) * 1000,
+         predicted_count_1000pm = (predicted_count_depression / n_cases) * 1000,
+         lower_ci_1000pm = (lower_ci / n_cases) * 1000,
+         upper_ci_1000pm = (upper_ci / n_cases) * 1000) |> 
+  mutate(Cancer_type = "Prostate")
+
+# 膵癌
+df_subtype <- df_all |> 
+  filter(Cancer_category_detail == "Pancreas")
+
+monthly_data_depression <- df_subtype |> 
+  rowwise() |> 
+  mutate(months_followed_depression = list(seq(Date_entry, Date_last_follow_depression, by = "month"))) |> 
+  unnest(cols = c(months_followed_depression)) |> 
+  mutate(month_since_entry = time_length(interval(Date_entry, months_followed_depression), "months")) |> 
+  mutate(Event_depression_monthly = if_else(!is.na(Date_event_depression) & floor_date(Date_event_depression, "month") == months_followed_depression, 1, 0)) |> 
+  group_by(month_since_entry) |> 
+  summarise(
+    n_cases = n(),
+    n_events_depression = sum(Event_depression_monthly == 1)
+  ) |> 
+  filter(month_since_entry <= 24)
+
+poisson_model_depression <- glm(n_events_depression ~ ns(month_since_entry, df = 7), 
+                                offset = log(n_cases), 
+                                family = poisson, 
+                                data = monthly_data_depression)
+
+monthly_data_depression_pancreas <- monthly_data_depression |> 
+  mutate(predicted_count_depression = predict(poisson_model_depression, type = "response"),
+         se_fit = predict(poisson_model_depression, type = "link", se.fit = TRUE)$se.fit,
+         log_pred = predict(poisson_model_depression, type = "link")) |> 
+  mutate(lower_ci = exp(log_pred - 1.96 * se_fit),
+         upper_ci = exp(log_pred + 1.96 * se_fit)) |> 
+  mutate(incidence_rate_1000pm = (n_events_depression / n_cases) * 1000,
+         predicted_count_1000pm = (predicted_count_depression / n_cases) * 1000,
+         lower_ci_1000pm = (lower_ci / n_cases) * 1000,
+         upper_ci_1000pm = (upper_ci / n_cases) * 1000) |> 
+  mutate(Cancer_type = "Pancreas")
+
+# 肝臓癌
+df_subtype <- df_all |> 
+  filter(Cancer_category_detail == "Liver")
+
+monthly_data_depression <- df_subtype |> 
+  rowwise() |> 
+  mutate(months_followed_depression = list(seq(Date_entry, Date_last_follow_depression, by = "month"))) |> 
+  unnest(cols = c(months_followed_depression)) |> 
+  mutate(month_since_entry = time_length(interval(Date_entry, months_followed_depression), "months")) |> 
+  mutate(Event_depression_monthly = if_else(!is.na(Date_event_depression) & floor_date(Date_event_depression, "month") == months_followed_depression, 1, 0)) |> 
+  group_by(month_since_entry) |> 
+  summarise(
+    n_cases = n(),
+    n_events_depression = sum(Event_depression_monthly == 1)
+  ) |> 
+  filter(month_since_entry <= 24)
+
+poisson_model_depression <- glm(n_events_depression ~ ns(month_since_entry, df = 7), 
+                                offset = log(n_cases), 
+                                family = poisson, 
+                                data = monthly_data_depression)
+
+monthly_data_depression_liver <- monthly_data_depression |> 
+  mutate(predicted_count_depression = predict(poisson_model_depression, type = "response"),
+         se_fit = predict(poisson_model_depression, type = "link", se.fit = TRUE)$se.fit,
+         log_pred = predict(poisson_model_depression, type = "link")) |> 
+  mutate(lower_ci = exp(log_pred - 1.96 * se_fit),
+         upper_ci = exp(log_pred + 1.96 * se_fit)) |> 
+  mutate(incidence_rate_1000pm = (n_events_depression / n_cases) * 1000,
+         predicted_count_1000pm = (predicted_count_depression / n_cases) * 1000,
+         lower_ci_1000pm = (lower_ci / n_cases) * 1000,
+         upper_ci_1000pm = (upper_ci / n_cases) * 1000) |> 
+  mutate(Cancer_type = "Liver")
+
+
+# Cancer typeを統合して可視化
+combined_data <- bind_rows(
+  monthly_data_depression_colorectum,
+  monthly_data_depression_lung,
+  monthly_data_depression_stomach,
+  monthly_data_depression_breast,
+  monthly_data_depression_prostate,
+  monthly_data_depression_pancreas,
+  monthly_data_depression_liver
+  )
+
+ggplot(combined_data, aes(x = month_since_entry, y = predicted_count_1000pm, color = factor(Cancer_type))) +
+  #geom_point(aes(y = incidence_rate_1000pm), color = "black") +
+  geom_line(size = 1.1) + 
+  geom_ribbon(aes(ymin = lower_ci_1000pm, ymax = upper_ci_1000pm, fill = factor(Cancer_type)), alpha = 0.2, color = NA) +
+  labs(
+    title = "Major cancer (depression)",
+    x = "Time from cancer diagnosis (months)",
+    y = "Incidence Rate (‰)",
+    color = "Type",
+    fill = "Type"
+  ) +
+  # scale_color_manual(values = c("red", "blue")) +  # 男女別の色（線）
+  # scale_fill_manual(values = c("pink", "lightblue")) +  # 95%CIの塗りつぶし色
+  scale_x_continuous(
+    breaks = seq(-2, max(combined_data$month_since_entry), by = 2), 
+    labels = seq(-2, max(combined_data$month_since_entry), by = 2)
+  ) +
+  theme_minimal()+
+  theme(legend.position = "none")
+
+# ggsave(filename = "dep_major_inc.pdf", plot = p, width = 7, height = 5)
+```
+
+# メジャーがん：うつ病：累積リスク
+```{r}
+# 大腸癌
+monthly_data_depression_colorectum <- monthly_data_depression_colorectum |> 
+  mutate(
+    cumulative_hazard = cumsum(predicted_count_depression / n_cases),
+    cumulative_lower_ci_hazard = cumsum(lower_ci / n_cases),
+    cumulative_upper_ci_hazard = cumsum(upper_ci / n_cases),
+    cumulative_hazard_raw = cumsum(n_events_depression / n_cases),
+    
+    cumulative_risk = (1 - exp(-cumulative_hazard))*1000,
+    cumulative_lower_ci_risk = (1 - exp(-cumulative_lower_ci_hazard))*1000,
+    cumulative_upper_ci_risk = (1 - exp(-cumulative_upper_ci_hazard))*1000,
+
+    #cumulative_risk_raw = (1 - exp(-cumulative_hazard_raw))*1000
+    )
+
+# 肺癌
+monthly_data_depression_lung <- monthly_data_depression_lung |> 
+  mutate(    
+    cumulative_hazard = cumsum(predicted_count_depression / n_cases),
+    cumulative_lower_ci_hazard = cumsum(lower_ci / n_cases),
+    cumulative_upper_ci_hazard = cumsum(upper_ci / n_cases),
+    cumulative_hazard_raw = cumsum(n_events_depression / n_cases),
+    
+    cumulative_risk = (1 - exp(-cumulative_hazard))*1000,
+    cumulative_lower_ci_risk = (1 - exp(-cumulative_lower_ci_hazard))*1000,
+    cumulative_upper_ci_risk = (1 - exp(-cumulative_upper_ci_hazard))*1000,
+
+    #cumulative_risk_raw = (1 - exp(-cumulative_hazard_raw))*1000
+    )
+
+# 胃癌
+monthly_data_depression_stomach <- monthly_data_depression_stomach |> 
+  mutate(
+      cumulative_hazard = cumsum(predicted_count_depression / n_cases),
+    cumulative_lower_ci_hazard = cumsum(lower_ci / n_cases),
+    cumulative_upper_ci_hazard = cumsum(upper_ci / n_cases),
+    cumulative_hazard_raw = cumsum(n_events_depression / n_cases),
+    
+    cumulative_risk = (1 - exp(-cumulative_hazard))*1000,
+    cumulative_lower_ci_risk = (1 - exp(-cumulative_lower_ci_hazard))*1000,
+    cumulative_upper_ci_risk = (1 - exp(-cumulative_upper_ci_hazard))*1000,
+
+    #cumulative_risk_raw = (1 - exp(-cumulative_hazard_raw))*1000
+  )
+
+# 乳癌
+monthly_data_depression_breast <- monthly_data_depression_breast |> 
+  mutate(   
+    cumulative_hazard = cumsum(predicted_count_depression / n_cases),
+    cumulative_lower_ci_hazard = cumsum(lower_ci / n_cases),
+    cumulative_upper_ci_hazard = cumsum(upper_ci / n_cases),
+    cumulative_hazard_raw = cumsum(n_events_depression / n_cases),
+    
+    cumulative_risk = (1 - exp(-cumulative_hazard))*1000,
+    cumulative_lower_ci_risk = (1 - exp(-cumulative_lower_ci_hazard))*1000,
+    cumulative_upper_ci_risk = (1 - exp(-cumulative_upper_ci_hazard))*1000,
+
+    #cumulative_risk_raw = (1 - exp(-cumulative_hazard_raw))*1000
+    )
+
+# 前立腺癌
+monthly_data_depression_prostate <- monthly_data_depression_prostate |> 
+  mutate(    
+    cumulative_hazard = cumsum(predicted_count_depression / n_cases),
+    cumulative_lower_ci_hazard = cumsum(lower_ci / n_cases),
+    cumulative_upper_ci_hazard = cumsum(upper_ci / n_cases),
+    cumulative_hazard_raw = cumsum(n_events_depression / n_cases),
+    
+    cumulative_risk = (1 - exp(-cumulative_hazard))*1000,
+    cumulative_lower_ci_risk = (1 - exp(-cumulative_lower_ci_hazard))*1000,
+    cumulative_upper_ci_risk = (1 - exp(-cumulative_upper_ci_hazard))*1000,
+
+    #cumulative_risk_raw = (1 - exp(-cumulative_hazard_raw))*1000
+    )
+
+# 膵癌
+monthly_data_depression_pancreas <- monthly_data_depression_pancreas |> 
+  mutate(    
+    cumulative_hazard = cumsum(predicted_count_depression / n_cases),
+    cumulative_lower_ci_hazard = cumsum(lower_ci / n_cases),
+    cumulative_upper_ci_hazard = cumsum(upper_ci / n_cases),
+    cumulative_hazard_raw = cumsum(n_events_depression / n_cases),
+    
+    cumulative_risk = (1 - exp(-cumulative_hazard))*1000,
+    cumulative_lower_ci_risk = (1 - exp(-cumulative_lower_ci_hazard))*1000,
+    cumulative_upper_ci_risk = (1 - exp(-cumulative_upper_ci_hazard))*1000,
+
+    #cumulative_risk_raw = (1 - exp(-cumulative_hazard_raw))*1000
+    )
+
+# 肝臓癌
+monthly_data_depression_liver <- monthly_data_depression_liver |> 
+  mutate(    
+    cumulative_hazard = cumsum(predicted_count_depression / n_cases),
+    cumulative_lower_ci_hazard = cumsum(lower_ci / n_cases),
+    cumulative_upper_ci_hazard = cumsum(upper_ci / n_cases),
+    cumulative_hazard_raw = cumsum(n_events_depression / n_cases),
+    
+    cumulative_risk = (1 - exp(-cumulative_hazard))*1000,
+    cumulative_lower_ci_risk = (1 - exp(-cumulative_lower_ci_hazard))*1000,
+    cumulative_upper_ci_risk = (1 - exp(-cumulative_upper_ci_hazard))*1000,
+
+    #cumulative_risk_raw = (1 - exp(-cumulative_hazard_raw))*1000
+    )
+
+# 統合して可視化
+combined_data_cumulative <- bind_rows(
+  monthly_data_depression_colorectum,
+  monthly_data_depression_lung,
+  monthly_data_depression_stomach,
+  monthly_data_depression_breast,
+  monthly_data_depression_prostate,
+  monthly_data_depression_pancreas,
+  monthly_data_depression_liver
+  )
+
+ggplot(combined_data_cumulative, aes(x = month_since_entry, y = cumulative_risk, color = factor(Cancer_type))) +
+  geom_line(size = 1.1) +
+  geom_ribbon(aes(ymin = cumulative_lower_ci_risk, ymax = cumulative_upper_ci_risk, fill = factor(Cancer_type)), alpha = 0.2, color = NA) +
+  labs(
+    title = "Major cancer (depression)",
+    x = "Months from cancer diagnosis (months)",
+    y = "Cumulative risk (‰)",
+    color = "Type",
+    fill = "Type"
+  ) +
+  # scale_color_manual(values = c("red", "blue")) + 
+  # scale_fill_manual(values = c("pink", "lightblue")) + 
+  scale_x_continuous(
+    breaks = seq(0, max(combined_data_cumulative$month_since_entry), by = 2),
+    labels = seq(0, max(combined_data_cumulative$month_since_entry), by = 2)
+  ) +
+  theme_minimal()+
+  theme(legend.position = "none")
+
+# ggsave(filename = "dep_major_cum.pdf", plot = p, width = 7, height = 5)
+```
+
+# 注目すべきがん：うつ病：発症率
+```{r}
+# キーがん＝口唇・口腔・咽頭癌、食道癌 と定義
+#口唇・口腔・咽頭癌
+df_subtype <- df_all |> 
+  filter(Cancer_category_detail == "Lip, oral cavity, and pharynx")
+
+monthly_data_depression <- df_subtype |> 
+  rowwise() |> 
+  mutate(months_followed_depression = list(seq(Date_entry, Date_last_follow_depression, by = "month"))) |> 
+  unnest(cols = c(months_followed_depression)) |> 
+  mutate(month_since_entry = time_length(interval(Date_entry, months_followed_depression), "months")) |> 
+  mutate(Event_depression_monthly = if_else(!is.na(Date_event_depression) & floor_date(Date_event_depression, "month") == months_followed_depression, 1, 0)) |> 
+  group_by(month_since_entry) |> 
+  summarise(
+    n_cases = n(),
+    n_events_depression = sum(Event_depression_monthly == 1)
+  ) |> 
+  filter(month_since_entry <= 24)
+
+poisson_model_depression <- glm(n_events_depression ~ ns(month_since_entry, df = 7), 
+                                offset = log(n_cases), 
+                                family = poisson, 
+                                data = monthly_data_depression)
+
+monthly_data_depression_oral <- monthly_data_depression |> 
+  mutate(predicted_count_depression = predict(poisson_model_depression, type = "response"),
+         se_fit = predict(poisson_model_depression, type = "link", se.fit = TRUE)$se.fit,
+         log_pred = predict(poisson_model_depression, type = "link")) |> 
+  mutate(lower_ci = exp(log_pred - 1.96 * se_fit),
+         upper_ci = exp(log_pred + 1.96 * se_fit)) |> 
+  mutate(incidence_rate_1000pm = (n_events_depression / n_cases) * 1000,
+         predicted_count_1000pm = (predicted_count_depression / n_cases) * 1000,
+         lower_ci_1000pm = (lower_ci / n_cases) * 1000,
+         upper_ci_1000pm = (upper_ci / n_cases) * 1000) |> 
+  mutate(Cancer_type = "Lip, oral cavity, and pharynx")
+
+# 食道癌
+df_subtype <- df_all |> 
+  filter(Cancer_category_detail == "Esophagus")
+
+monthly_data_depression <- df_subtype |> 
+  rowwise() |> 
+  mutate(months_followed_depression = list(seq(Date_entry, Date_last_follow_depression, by = "month"))) |> 
+  unnest(cols = c(months_followed_depression)) |> 
+  mutate(month_since_entry = time_length(interval(Date_entry, months_followed_depression), "months")) |> 
+  mutate(Event_depression_monthly = if_else(!is.na(Date_event_depression) & floor_date(Date_event_depression, "month") == months_followed_depression, 1, 0)) |> 
+  group_by(month_since_entry) |> 
+  summarise(
+    n_cases = n(),
+    n_events_depression = sum(Event_depression_monthly == 1)
+  ) |> 
+  filter(month_since_entry <= 24)
+
+poisson_model_depression <- glm(n_events_depression ~ ns(month_since_entry, df = 7), 
+                                offset = log(n_cases), 
+                                family = poisson, 
+                                data = monthly_data_depression)
+
+monthly_data_depression_esophagus <- monthly_data_depression |> 
+  mutate(predicted_count_depression = predict(poisson_model_depression, type = "response"),
+         se_fit = predict(poisson_model_depression, type = "link", se.fit = TRUE)$se.fit,
+         log_pred = predict(poisson_model_depression, type = "link")) |> 
+  mutate(lower_ci = exp(log_pred - 1.96 * se_fit),
+         upper_ci = exp(log_pred + 1.96 * se_fit)) |> 
+  mutate(incidence_rate_1000pm = (n_events_depression / n_cases) * 1000,
+         predicted_count_1000pm = (predicted_count_depression / n_cases) * 1000,
+         lower_ci_1000pm = (lower_ci / n_cases) * 1000,
+         upper_ci_1000pm = (upper_ci / n_cases) * 1000) |> 
+  mutate(Cancer_type = "Esophagus")
+
+# 膵癌
+df_subtype <- df_all |> 
+  filter(Cancer_category_detail == "Pancreas")
+
+monthly_data_depression <- df_subtype |> 
+  rowwise() |> 
+  mutate(months_followed_depression = list(seq(Date_entry, Date_last_follow_depression, by = "month"))) |> 
+  unnest(cols = c(months_followed_depression)) |> 
+  mutate(month_since_entry = time_length(interval(Date_entry, months_followed_depression), "months")) |> 
+  mutate(Event_depression_monthly = if_else(!is.na(Date_event_depression) & floor_date(Date_event_depression, "month") == months_followed_depression, 1, 0)) |> 
+  group_by(month_since_entry) |> 
+  summarise(
+    n_cases = n(),
+    n_events_depression = sum(Event_depression_monthly == 1)
+  ) |> 
+  filter(month_since_entry <= 24)
+
+poisson_model_depression <- glm(n_events_depression ~ ns(month_since_entry, df = 7), 
+                                offset = log(n_cases), 
+                                family = poisson, 
+                                data = monthly_data_depression)
+
+monthly_data_depression_pancreas <- monthly_data_depression |> 
+  mutate(predicted_count_depression = predict(poisson_model_depression, type = "response"),
+         se_fit = predict(poisson_model_depression, type = "link", se.fit = TRUE)$se.fit,
+         log_pred = predict(poisson_model_depression, type = "link")) |> 
+  mutate(lower_ci = exp(log_pred - 1.96 * se_fit),
+         upper_ci = exp(log_pred + 1.96 * se_fit)) |> 
+  mutate(incidence_rate_1000pm = (n_events_depression / n_cases) * 1000,
+         predicted_count_1000pm = (predicted_count_depression / n_cases) * 1000,
+         lower_ci_1000pm = (lower_ci / n_cases) * 1000,
+         upper_ci_1000pm = (upper_ci / n_cases) * 1000) |> 
+  mutate(Cancer_type = "Pancreas")
+
+# 悪性リンパ腫にて、ポワソン回帰に当てはめがうまくいかず、イベント数>50の定義に変更
+
+# Cancer typeを統合して可視化
+combined_data <- bind_rows(
+  monthly_data_depression_oral,
+  monthly_data_depression_esophagus,
+  monthly_data_depression_pancreas
+  )
+
+ggplot(combined_data, aes(x = month_since_entry, y = predicted_count_1000pm, color = factor(Cancer_type))) +
+  #geom_point(aes(y = incidence_rate_1000pm), color = "black") +
+  geom_line(size = 1.1) + 
+  geom_ribbon(aes(ymin = lower_ci_1000pm, ymax = upper_ci_1000pm, fill = factor(Cancer_type)), alpha = 0.2, color = NA) +
+  labs(
+    title = "Key cancer (depression)",
+    x = "Months from cancer diagnosis (months)",
+    y = "Incidence rate (‰)",
+    color = "Type",
+    fill = "Type"
+  ) +
+  # scale_color_manual(values = c("red", "blue")) +  # 男女別の色（線）
+  # scale_fill_manual(values = c("pink", "lightblue")) +  # 95%CIの塗りつぶし色
+  scale_x_continuous(
+    breaks = seq(-2, max(combined_data$month_since_entry), by = 2), 
+    labels = seq(-2, max(combined_data$month_since_entry), by = 2)
+  ) +
+  theme_minimal()+
+  theme(legend.position = "none")
+
+# ggsave(filename = "dep_key_inc.pdf", plot = p, width = 7, height = 5)
+```
+
+# 注目すべきがん：うつ病：累積リスク
+```{r}
+# 食道癌
+monthly_data_depression_esophagus <- monthly_data_depression_esophagus |> 
+  mutate(
+    cumulative_hazard = cumsum(predicted_count_depression / n_cases),
+    cumulative_lower_ci_hazard = cumsum(lower_ci / n_cases),
+    cumulative_upper_ci_hazard = cumsum(upper_ci / n_cases),
+    cumulative_hazard_raw = cumsum(n_events_depression / n_cases),
+    
+    cumulative_risk = (1 - exp(-cumulative_hazard))*1000,
+    cumulative_lower_ci_risk = (1 - exp(-cumulative_lower_ci_hazard))*1000,
+    cumulative_upper_ci_risk = (1 - exp(-cumulative_upper_ci_hazard))*1000,
+
+    #cumulative_risk_raw = (1 - exp(-cumulative_hazard_raw))*1000
+    )
+
+# 口唇・口腔・咽頭癌
+monthly_data_depression_oral <- monthly_data_depression_oral |> 
+  mutate(
+    cumulative_hazard = cumsum(predicted_count_depression / n_cases),
+    cumulative_lower_ci_hazard = cumsum(lower_ci / n_cases),
+    cumulative_upper_ci_hazard = cumsum(upper_ci / n_cases),
+    cumulative_hazard_raw = cumsum(n_events_depression / n_cases),
+    
+    cumulative_risk = (1 - exp(-cumulative_hazard))*1000,
+    cumulative_lower_ci_risk = (1 - exp(-cumulative_lower_ci_hazard))*1000,
+    cumulative_upper_ci_risk = (1 - exp(-cumulative_upper_ci_hazard))*1000,
+
+    #cumulative_risk_raw = (1 - exp(-cumulative_hazard_raw))*1000
+    )
+
+# 膵癌
+monthly_data_depression_pancreas <- monthly_data_depression_pancreas |> 
+  mutate(
+    cumulative_hazard = cumsum(predicted_count_depression / n_cases),
+    cumulative_lower_ci_hazard = cumsum(lower_ci / n_cases),
+    cumulative_upper_ci_hazard = cumsum(upper_ci / n_cases),
+    cumulative_hazard_raw = cumsum(n_events_depression / n_cases),
+    
+    cumulative_risk = (1 - exp(-cumulative_hazard))*1000,
+    cumulative_lower_ci_risk = (1 - exp(-cumulative_lower_ci_hazard))*1000,
+    cumulative_upper_ci_risk = (1 - exp(-cumulative_upper_ci_hazard))*1000,
+
+    #cumulative_risk_raw = (1 - exp(-cumulative_hazard_raw))*1000
+    )
+
+
+# 統合して可視化
+combined_data_cumulative <- bind_rows(
+  monthly_data_depression_esophagus,
+  monthly_data_depression_oral,
+  monthly_data_depression_pancreas
+  )
+
+ggplot(combined_data_cumulative, aes(x = month_since_entry, y = cumulative_risk, color = factor(Cancer_type))) +
+  geom_line(size = 1.1) +
+  geom_ribbon(aes(ymin = cumulative_lower_ci_risk, ymax = cumulative_upper_ci_risk, fill = factor(Cancer_type)), alpha = 0.2, color = NA) +
+  labs(
+    title = "Key cancer (depression)",
+    x = "Months from cancer diagnosis (months)",
+    y = "Cumulative risk (‰)",
+    color = "Type",
+    fill = "Type"
+  ) +
+  # scale_color_manual(values = c("red", "blue")) +  # 男女別の色（線）
+  # scale_fill_manual(values = c("pink", "lightblue")) +  # 95%CIの塗りつぶし色
+  scale_x_continuous(
+    breaks = seq(0, max(combined_data_cumulative$month_since_entry), by = 2),
+    labels = seq(0, max(combined_data_cumulative$month_since_entry), by = 2)
+  ) +
+  theme_minimal()+
+  theme(legend.position = "none")
+
+# ggsave(filename = "dep_key_cum.pdf", plot = p, width = 7, height = 5)
+```
+
+# メジャーがん：不安障害：発生率
+```{r}
+# メジャ－がん＝大腸癌、肺癌、胃癌、乳癌、前立腺癌、膵癌、肝臓癌 と定義
+#大腸癌
+df_subtype <- df_all |> 
+  filter(Cancer_category_detail == "Colorectum")
+
+monthly_data_anxiety <- df_subtype |> 
+  rowwise() |> 
+  mutate(months_followed_anxiety = list(seq(Date_entry, Date_last_follow_anxiety, by = "month"))) |> 
+  unnest(cols = c(months_followed_anxiety)) |> 
+  mutate(month_since_entry = time_length(interval(Date_entry, months_followed_anxiety), "months")) |> 
+  mutate(Event_anxiety_monthly = if_else(!is.na(Date_event_anxiety) & floor_date(Date_event_anxiety, "month") == months_followed_anxiety, 1, 0)) |> 
+  group_by(month_since_entry) |> 
+  summarise(
+    n_cases = n(),
+    n_events_anxiety = sum(Event_anxiety_monthly == 1)
+  ) |> 
+  filter(month_since_entry <= 24)
+
+poisson_model_anxiety <- glm(n_events_anxiety ~ ns(month_since_entry, df = 7), 
+                                offset = log(n_cases), 
+                                family = poisson, 
+                                data = monthly_data_anxiety)
+
+monthly_data_anxiety_colorectum <- monthly_data_anxiety |> 
+  mutate(predicted_count_anxiety = predict(poisson_model_anxiety, type = "response"),
+         se_fit = predict(poisson_model_anxiety, type = "link", se.fit = TRUE)$se.fit,
+         log_pred = predict(poisson_model_anxiety, type = "link")) |> 
+  mutate(lower_ci = exp(log_pred - 1.96 * se_fit),
+         upper_ci = exp(log_pred + 1.96 * se_fit)) |> 
+  mutate(incidence_rate_1000pm = (n_events_anxiety / n_cases) * 1000,
+         predicted_count_1000pm = (predicted_count_anxiety / n_cases) * 1000,
+         lower_ci_1000pm = (lower_ci / n_cases) * 1000,
+         upper_ci_1000pm = (upper_ci / n_cases) * 1000) |> 
+  mutate(Cancer_type = "Colorectum")
+
+#肺癌
+df_subtype <- df_all |> 
+  filter(Cancer_category_detail == "Lung")
+
+monthly_data_anxiety <- df_subtype |> 
+  rowwise() |> 
+  mutate(months_followed_anxiety = list(seq(Date_entry, Date_last_follow_anxiety, by = "month"))) |> 
+  unnest(cols = c(months_followed_anxiety)) |> 
+  mutate(month_since_entry = time_length(interval(Date_entry, months_followed_anxiety), "months")) |> 
+  mutate(Event_anxiety_monthly = if_else(!is.na(Date_event_anxiety) & floor_date(Date_event_anxiety, "month") == months_followed_anxiety, 1, 0)) |> 
+  group_by(month_since_entry) |> 
+  summarise(
+    n_cases = n(),
+    n_events_anxiety = sum(Event_anxiety_monthly == 1)
+  ) |> 
+  filter(month_since_entry <= 24)
+
+poisson_model_anxiety <- glm(n_events_anxiety ~ ns(month_since_entry, df = 7), 
+                                offset = log(n_cases), 
+                                family = poisson, 
+                                data = monthly_data_anxiety)
+
+monthly_data_anxiety_lung <- monthly_data_anxiety |> 
+  mutate(predicted_count_anxiety = predict(poisson_model_anxiety, type = "response"),
+         se_fit = predict(poisson_model_anxiety, type = "link", se.fit = TRUE)$se.fit,
+         log_pred = predict(poisson_model_anxiety, type = "link")) |> 
+  mutate(lower_ci = exp(log_pred - 1.96 * se_fit),
+         upper_ci = exp(log_pred + 1.96 * se_fit)) |> 
+  mutate(incidence_rate_1000pm = (n_events_anxiety / n_cases) * 1000,
+         predicted_count_1000pm = (predicted_count_anxiety / n_cases) * 1000,
+         lower_ci_1000pm = (lower_ci / n_cases) * 1000,
+         upper_ci_1000pm = (upper_ci / n_cases) * 1000) |> 
+  mutate(Cancer_type = "Lung")
+
+# 胃癌
+df_subtype <- df_all |> 
+  filter(Cancer_category_detail == "Stomach")
+
+monthly_data_anxiety <- df_subtype |> 
+  rowwise() |> 
+  mutate(months_followed_anxiety = list(seq(Date_entry, Date_last_follow_anxiety, by = "month"))) |> 
+  unnest(cols = c(months_followed_anxiety)) |> 
+  mutate(month_since_entry = time_length(interval(Date_entry, months_followed_anxiety), "months")) |> 
+  mutate(Event_anxiety_monthly = if_else(!is.na(Date_event_anxiety) & floor_date(Date_event_anxiety, "month") == months_followed_anxiety, 1, 0)) |> 
+  group_by(month_since_entry) |> 
+  summarise(
+    n_cases = n(),
+    n_events_anxiety = sum(Event_anxiety_monthly == 1)
+  ) |> 
+  filter(month_since_entry <= 24)
+
+poisson_model_anxiety <- glm(n_events_anxiety ~ ns(month_since_entry, df = 7), 
+                                offset = log(n_cases), 
+                                family = poisson, 
+                                data = monthly_data_anxiety)
+
+monthly_data_anxiety_stomach <- monthly_data_anxiety |> 
+  mutate(predicted_count_anxiety = predict(poisson_model_anxiety, type = "response"),
+         se_fit = predict(poisson_model_anxiety, type = "link", se.fit = TRUE)$se.fit,
+         log_pred = predict(poisson_model_anxiety, type = "link")) |> 
+  mutate(lower_ci = exp(log_pred - 1.96 * se_fit),
+         upper_ci = exp(log_pred + 1.96 * se_fit)) |> 
+  mutate(incidence_rate_1000pm = (n_events_anxiety / n_cases) * 1000,
+         predicted_count_1000pm = (predicted_count_anxiety / n_cases) * 1000,
+         lower_ci_1000pm = (lower_ci / n_cases) * 1000,
+         upper_ci_1000pm = (upper_ci / n_cases) * 1000) |> 
+  mutate(Cancer_type = "Stomach")
+
+# 乳癌
+df_subtype <- df_all |> 
+  filter(Cancer_category_detail == "Breast")
+
+monthly_data_anxiety <- df_subtype |> 
+  rowwise() |> 
+  mutate(months_followed_anxiety = list(seq(Date_entry, Date_last_follow_anxiety, by = "month"))) |> 
+  unnest(cols = c(months_followed_anxiety)) |> 
+  mutate(month_since_entry = time_length(interval(Date_entry, months_followed_anxiety), "months")) |> 
+  mutate(Event_anxiety_monthly = if_else(!is.na(Date_event_anxiety) & floor_date(Date_event_anxiety, "month") == months_followed_anxiety, 1, 0)) |> 
+  group_by(month_since_entry) |> 
+  summarise(
+    n_cases = n(),
+    n_events_anxiety = sum(Event_anxiety_monthly == 1)
+  ) |> 
+  filter(month_since_entry <= 24)
+
+poisson_model_anxiety <- glm(n_events_anxiety ~ ns(month_since_entry, df = 7), 
+                                offset = log(n_cases), 
+                                family = poisson, 
+                                data = monthly_data_anxiety)
+
+monthly_data_anxiety_breast <- monthly_data_anxiety |> 
+  mutate(predicted_count_anxiety = predict(poisson_model_anxiety, type = "response"),
+         se_fit = predict(poisson_model_anxiety, type = "link", se.fit = TRUE)$se.fit,
+         log_pred = predict(poisson_model_anxiety, type = "link")) |> 
+  mutate(lower_ci = exp(log_pred - 1.96 * se_fit),
+         upper_ci = exp(log_pred + 1.96 * se_fit)) |> 
+  mutate(incidence_rate_1000pm = (n_events_anxiety / n_cases) * 1000,
+         predicted_count_1000pm = (predicted_count_anxiety / n_cases) * 1000,
+         lower_ci_1000pm = (lower_ci / n_cases) * 1000,
+         upper_ci_1000pm = (upper_ci / n_cases) * 1000) |> 
+  mutate(Cancer_type = "Breast")
+
+# 前立腺癌
+df_subtype <- df_all |> 
+  filter(Cancer_category_detail == "Prostate")
+
+monthly_data_anxiety <- df_subtype |> 
+  rowwise() |> 
+  mutate(months_followed_anxiety = list(seq(Date_entry, Date_last_follow_anxiety, by = "month"))) |> 
+  unnest(cols = c(months_followed_anxiety)) |> 
+  mutate(month_since_entry = time_length(interval(Date_entry, months_followed_anxiety), "months")) |> 
+  mutate(Event_anxiety_monthly = if_else(!is.na(Date_event_anxiety) & floor_date(Date_event_anxiety, "month") == months_followed_anxiety, 1, 0)) |> 
+  group_by(month_since_entry) |> 
+  summarise(
+    n_cases = n(),
+    n_events_anxiety = sum(Event_anxiety_monthly == 1)
+  ) |> 
+  filter(month_since_entry <= 24)
+
+poisson_model_anxiety <- glm(n_events_anxiety ~ ns(month_since_entry, df = 7), 
+                                offset = log(n_cases), 
+                                family = poisson, 
+                                data = monthly_data_anxiety)
+
+monthly_data_anxiety_prostate <- monthly_data_anxiety |> 
+  mutate(predicted_count_anxiety = predict(poisson_model_anxiety, type = "response"),
+         se_fit = predict(poisson_model_anxiety, type = "link", se.fit = TRUE)$se.fit,
+         log_pred = predict(poisson_model_anxiety, type = "link")) |> 
+  mutate(lower_ci = exp(log_pred - 1.96 * se_fit),
+         upper_ci = exp(log_pred + 1.96 * se_fit)) |> 
+  mutate(incidence_rate_1000pm = (n_events_anxiety / n_cases) * 1000,
+         predicted_count_1000pm = (predicted_count_anxiety / n_cases) * 1000,
+         lower_ci_1000pm = (lower_ci / n_cases) * 1000,
+         upper_ci_1000pm = (upper_ci / n_cases) * 1000) |> 
+  mutate(Cancer_type = "Prostate")
+
+# 膵癌
+df_subtype <- df_all |> 
+  filter(Cancer_category_detail == "Pancreas")
+
+monthly_data_anxiety <- df_subtype |> 
+  rowwise() |> 
+  mutate(months_followed_anxiety = list(seq(Date_entry, Date_last_follow_anxiety, by = "month"))) |> 
+  unnest(cols = c(months_followed_anxiety)) |> 
+  mutate(month_since_entry = time_length(interval(Date_entry, months_followed_anxiety), "months")) |> 
+  mutate(Event_anxiety_monthly = if_else(!is.na(Date_event_anxiety) & floor_date(Date_event_anxiety, "month") == months_followed_anxiety, 1, 0)) |> 
+  group_by(month_since_entry) |> 
+  summarise(
+    n_cases = n(),
+    n_events_anxiety = sum(Event_anxiety_monthly == 1)
+  ) |> 
+  filter(month_since_entry <= 24)
+
+poisson_model_anxiety <- glm(n_events_anxiety ~ ns(month_since_entry, df = 7), 
+                                offset = log(n_cases), 
+                                family = poisson, 
+                                data = monthly_data_anxiety)
+
+monthly_data_anxiety_pancreas <- monthly_data_anxiety |> 
+  mutate(predicted_count_anxiety = predict(poisson_model_anxiety, type = "response"),
+         se_fit = predict(poisson_model_anxiety, type = "link", se.fit = TRUE)$se.fit,
+         log_pred = predict(poisson_model_anxiety, type = "link")) |> 
+  mutate(lower_ci = exp(log_pred - 1.96 * se_fit),
+         upper_ci = exp(log_pred + 1.96 * se_fit)) |> 
+  mutate(incidence_rate_1000pm = (n_events_anxiety / n_cases) * 1000,
+         predicted_count_1000pm = (predicted_count_anxiety / n_cases) * 1000,
+         lower_ci_1000pm = (lower_ci / n_cases) * 1000,
+         upper_ci_1000pm = (upper_ci / n_cases) * 1000) |> 
+  mutate(Cancer_type = "Pancreas")
+
+# 肝臓癌
+df_subtype <- df_all |> 
+  filter(Cancer_category_detail == "Liver")
+
+monthly_data_anxiety <- df_subtype |> 
+  rowwise() |> 
+  mutate(months_followed_anxiety = list(seq(Date_entry, Date_last_follow_anxiety, by = "month"))) |> 
+  unnest(cols = c(months_followed_anxiety)) |> 
+  mutate(month_since_entry = time_length(interval(Date_entry, months_followed_anxiety), "months")) |> 
+  mutate(Event_anxiety_monthly = if_else(!is.na(Date_event_anxiety) & floor_date(Date_event_anxiety, "month") == months_followed_anxiety, 1, 0)) |> 
+  group_by(month_since_entry) |> 
+  summarise(
+    n_cases = n(),
+    n_events_anxiety = sum(Event_anxiety_monthly == 1)
+  ) |> 
+  filter(month_since_entry <= 24)
+
+poisson_model_anxiety <- glm(n_events_anxiety ~ ns(month_since_entry, df = 7), 
+                                offset = log(n_cases), 
+                                family = poisson, 
+                                data = monthly_data_anxiety)
+
+monthly_data_anxiety_liver <- monthly_data_anxiety |> 
+  mutate(predicted_count_anxiety = predict(poisson_model_anxiety, type = "response"),
+         se_fit = predict(poisson_model_anxiety, type = "link", se.fit = TRUE)$se.fit,
+         log_pred = predict(poisson_model_anxiety, type = "link")) |> 
+  mutate(lower_ci = exp(log_pred - 1.96 * se_fit),
+         upper_ci = exp(log_pred + 1.96 * se_fit)) |> 
+  mutate(incidence_rate_1000pm = (n_events_anxiety / n_cases) * 1000,
+         predicted_count_1000pm = (predicted_count_anxiety / n_cases) * 1000,
+         lower_ci_1000pm = (lower_ci / n_cases) * 1000,
+         upper_ci_1000pm = (upper_ci / n_cases) * 1000) |> 
+  mutate(Cancer_type = "Liver")
+
+
+# Cancer typeを統合して可視化
+combined_data <- bind_rows(
+  monthly_data_anxiety_colorectum,
+  monthly_data_anxiety_lung,
+  monthly_data_anxiety_stomach,
+  monthly_data_anxiety_breast,
+  monthly_data_anxiety_prostate,
+  monthly_data_anxiety_pancreas,
+  monthly_data_anxiety_liver
+  )
+
+ggplot(combined_data, aes(x = month_since_entry, y = predicted_count_1000pm, color = factor(Cancer_type))) +
+  #geom_point(aes(y = incidence_rate_1000pm), color = "black") +
+  geom_line(size = 1.1) + 
+  geom_ribbon(aes(ymin = lower_ci_1000pm, ymax = upper_ci_1000pm, fill = factor(Cancer_type)), alpha = 0.2, color = NA) +
+  labs(
+    title = "Major cancer (anxiety)",
+    x = "Months from cancer diagnosis (months)",
+    y = "Incidence rate (‰)",
+    color = "Type",
+    fill = "Type"
+  ) +
+  # scale_color_manual(values = c("red", "blue")) +  # 男女別の色（線）
+  # scale_fill_manual(values = c("pink", "lightblue")) +  # 95%CIの塗りつぶし色
+  scale_x_continuous(
+    breaks = seq(0, max(combined_data$month_since_entry), by = 2), 
+    labels = seq(0, max(combined_data$month_since_entry), by = 2)
+  ) +
+  coord_cartesian(ylim = c(0, 25))+
+  theme_minimal()+
+  theme(legend.position = "none")
+
+# ggsave(filename = "anxiety_major_inc.pdf", plot = p, width = 7, height = 5)
+```
+
+# メジャーがん：不安障害：累積リスク
+```{r}
+# 大腸癌
+monthly_data_anxiety_colorectum <- monthly_data_anxiety_colorectum |> 
+  mutate(
+    cumulative_hazard = cumsum(predicted_count_anxiety / n_cases),
+    cumulative_lower_ci_hazard = cumsum(lower_ci / n_cases),
+    cumulative_upper_ci_hazard = cumsum(upper_ci / n_cases),
+    cumulative_hazard_raw = cumsum(n_events_anxiety / n_cases),
+    
+    cumulative_risk = (1 - exp(-cumulative_hazard))*1000,
+    cumulative_lower_ci_risk = (1 - exp(-cumulative_lower_ci_hazard))*1000,
+    cumulative_upper_ci_risk = (1 - exp(-cumulative_upper_ci_hazard))*1000
+    )
+
+# 肺癌
+monthly_data_anxiety_lung <- monthly_data_anxiety_lung |> 
+  mutate(
+    cumulative_hazard = cumsum(predicted_count_anxiety / n_cases),
+    cumulative_lower_ci_hazard = cumsum(lower_ci / n_cases),
+    cumulative_upper_ci_hazard = cumsum(upper_ci / n_cases),
+    cumulative_hazard_raw = cumsum(n_events_anxiety / n_cases),
+    
+    cumulative_risk = (1 - exp(-cumulative_hazard))*1000,
+    cumulative_lower_ci_risk = (1 - exp(-cumulative_lower_ci_hazard))*1000,
+    cumulative_upper_ci_risk = (1 - exp(-cumulative_upper_ci_hazard))*1000
+    )
+
+# 胃癌
+monthly_data_anxiety_stomach <- monthly_data_anxiety_stomach |> 
+  mutate(
+    cumulative_hazard = cumsum(predicted_count_anxiety / n_cases),
+    cumulative_lower_ci_hazard = cumsum(lower_ci / n_cases),
+    cumulative_upper_ci_hazard = cumsum(upper_ci / n_cases),
+    cumulative_hazard_raw = cumsum(n_events_anxiety / n_cases),
+    
+    cumulative_risk = (1 - exp(-cumulative_hazard))*1000,
+    cumulative_lower_ci_risk = (1 - exp(-cumulative_lower_ci_hazard))*1000,
+    cumulative_upper_ci_risk = (1 - exp(-cumulative_upper_ci_hazard))*1000
+    )
+
+# 乳癌
+monthly_data_anxiety_breast <- monthly_data_anxiety_breast |> 
+  mutate(
+    cumulative_hazard = cumsum(predicted_count_anxiety / n_cases),
+    cumulative_lower_ci_hazard = cumsum(lower_ci / n_cases),
+    cumulative_upper_ci_hazard = cumsum(upper_ci / n_cases),
+    cumulative_hazard_raw = cumsum(n_events_anxiety / n_cases),
+    
+    cumulative_risk = (1 - exp(-cumulative_hazard))*1000,
+    cumulative_lower_ci_risk = (1 - exp(-cumulative_lower_ci_hazard))*1000,
+    cumulative_upper_ci_risk = (1 - exp(-cumulative_upper_ci_hazard))*1000
+    )
+
+# 前立腺癌
+monthly_data_anxiety_prostate <- monthly_data_anxiety_prostate |> 
+  mutate(
+    cumulative_hazard = cumsum(predicted_count_anxiety / n_cases),
+    cumulative_lower_ci_hazard = cumsum(lower_ci / n_cases),
+    cumulative_upper_ci_hazard = cumsum(upper_ci / n_cases),
+    cumulative_hazard_raw = cumsum(n_events_anxiety / n_cases),
+    
+    cumulative_risk = (1 - exp(-cumulative_hazard))*1000,
+    cumulative_lower_ci_risk = (1 - exp(-cumulative_lower_ci_hazard))*1000,
+    cumulative_upper_ci_risk = (1 - exp(-cumulative_upper_ci_hazard))*1000
+    )
+
+# 膵癌
+monthly_data_anxiety_pancreas <- monthly_data_anxiety_pancreas |> 
+  mutate(cumulative_risk = cumsum(predicted_count_1000pm),
+         cumulative_lower_ci = cumsum(lower_ci_1000pm),
+         cumulative_upper_ci = cumsum(upper_ci_1000pm),
+         cumulative_risk_raw = cumsum(incidence_rate_1000pm))
+
+# 肝臓癌
+monthly_data_anxiety_liver <- monthly_data_anxiety_liver |> 
+  mutate(
+    cumulative_hazard = cumsum(predicted_count_anxiety / n_cases),
+    cumulative_lower_ci_hazard = cumsum(lower_ci / n_cases),
+    cumulative_upper_ci_hazard = cumsum(upper_ci / n_cases),
+    cumulative_hazard_raw = cumsum(n_events_anxiety / n_cases),
+    
+    cumulative_risk = (1 - exp(-cumulative_hazard))*1000,
+    cumulative_lower_ci_risk = (1 - exp(-cumulative_lower_ci_hazard))*1000,
+    cumulative_upper_ci_risk = (1 - exp(-cumulative_upper_ci_hazard))*1000
+    )
+
+# 統合して可視化
+combined_data_cumulative <- bind_rows(
+  monthly_data_anxiety_colorectum,
+  monthly_data_anxiety_lung,
+  monthly_data_anxiety_stomach,
+  monthly_data_anxiety_breast,
+  monthly_data_anxiety_prostate,
+  monthly_data_anxiety_pancreas,
+  monthly_data_anxiety_liver
+  )
+
+ggplot(combined_data_cumulative, aes(x = month_since_entry, y = cumulative_risk, color = factor(Cancer_type))) +
+  geom_line(size = 1.1) +
+  geom_ribbon(aes(ymin = cumulative_lower_ci_risk, ymax = cumulative_upper_ci_risk, fill = factor(Cancer_type)), alpha = 0.2, color = NA) +
+  labs(
+    title = "Major cancer (anxiety)",
+    x = "Months from cancer diagnosis (months)",
+    y = "Cumulative risk (‰)",
+    color = "Type",
+    fill = "Type"
+  ) +
+  # scale_color_manual(values = c("red", "blue")) +  
+  # scale_fill_manual(values = c("pink", "lightblue")) +
+  scale_x_continuous(
+    breaks = seq(0, max(combined_data_cumulative$month_since_entry), by = 2),
+    labels = seq(0, max(combined_data_cumulative$month_since_entry), by = 2)
+  ) +
+  coord_cartesian(ylim = c(0, 330))+
+  theme_minimal()+
+  theme(legend.position = "none")
+
+# ggsave(filename = "anxiety_major_cum.pdf", plot = p, width = 7, height = 5)
+```
+
+# 注目すべきがん：不安障害：発症率
+```{r}
+# キーがん＝口唇・口腔・咽頭癌、食道癌 と定義
+# 食道癌
+df_subtype <- df_all |> 
+  filter(Cancer_category_detail == "Esophagus")
+
+monthly_data_anxiety <- df_subtype |> 
+  rowwise() |> 
+  mutate(months_followed_anxiety = list(seq(Date_entry, Date_last_follow_anxiety, by = "month"))) |> 
+  unnest(cols = c(months_followed_anxiety)) |> 
+  mutate(month_since_entry = time_length(interval(Date_entry, months_followed_anxiety), "months")) |> 
+  mutate(Event_anxiety_monthly = if_else(!is.na(Date_event_anxiety) & floor_date(Date_event_anxiety, "month") == months_followed_anxiety, 1, 0)) |> 
+  group_by(month_since_entry) |> 
+  summarise(
+    n_cases = n(),
+    n_events_anxiety = sum(Event_anxiety_monthly == 1)
+  ) |> 
+  filter(month_since_entry <= 24)
+
+poisson_model_anxiety <- glm(n_events_anxiety ~ ns(month_since_entry, df = 7), 
+                                offset = log(n_cases), 
+                                family = poisson, 
+                                data = monthly_data_anxiety)
+
+monthly_data_anxiety_esophagus <- monthly_data_anxiety |> 
+  mutate(predicted_count_anxiety = predict(poisson_model_anxiety, type = "response"),
+         se_fit = predict(poisson_model_anxiety, type = "link", se.fit = TRUE)$se.fit,
+         log_pred = predict(poisson_model_anxiety, type = "link")) |> 
+  mutate(lower_ci = exp(log_pred - 1.96 * se_fit),
+         upper_ci = exp(log_pred + 1.96 * se_fit)) |> 
+  mutate(incidence_rate_1000pm = (n_events_anxiety / n_cases) * 1000,
+         predicted_count_1000pm = (predicted_count_anxiety / n_cases) * 1000,
+         lower_ci_1000pm = (lower_ci / n_cases) * 1000,
+         upper_ci_1000pm = (upper_ci / n_cases) * 1000) |> 
+  mutate(Cancer_type = "Esophagus")
+
+# 膵癌
+df_subtype <- df_all |> 
+  filter(Cancer_category_detail == "Pancreas")
+
+monthly_data_anxiety <- df_subtype |> 
+  rowwise() |> 
+  mutate(months_followed_anxiety = list(seq(Date_entry, Date_last_follow_anxiety, by = "month"))) |> 
+  unnest(cols = c(months_followed_anxiety)) |> 
+  mutate(month_since_entry = time_length(interval(Date_entry, months_followed_anxiety), "months")) |> 
+  mutate(Event_anxiety_monthly = if_else(!is.na(Date_event_anxiety) & floor_date(Date_event_anxiety, "month") == months_followed_anxiety, 1, 0)) |> 
+  group_by(month_since_entry) |> 
+  summarise(
+    n_cases = n(),
+    n_events_anxiety = sum(Event_anxiety_monthly == 1)
+  ) |> 
+  filter(month_since_entry <= 24)
+
+poisson_model_anxiety <- glm(n_events_anxiety ~ ns(month_since_entry, df = 7), 
+                                offset = log(n_cases), 
+                                family = poisson, 
+                                data = monthly_data_anxiety)
+
+monthly_data_anxiety_pancreas <- monthly_data_anxiety |> 
+  mutate(predicted_count_anxiety = predict(poisson_model_anxiety, type = "response"),
+         se_fit = predict(poisson_model_anxiety, type = "link", se.fit = TRUE)$se.fit,
+         log_pred = predict(poisson_model_anxiety, type = "link")) |> 
+  mutate(lower_ci = exp(log_pred - 1.96 * se_fit),
+         upper_ci = exp(log_pred + 1.96 * se_fit)) |> 
+  mutate(incidence_rate_1000pm = (n_events_anxiety / n_cases) * 1000,
+         predicted_count_1000pm = (predicted_count_anxiety / n_cases) * 1000,
+         lower_ci_1000pm = (lower_ci / n_cases) * 1000,
+         upper_ci_1000pm = (upper_ci / n_cases) * 1000) |> 
+  mutate(Cancer_type = "Pancreas")
+
+# Cancer typeを統合して可視化
+combined_data <- bind_rows(
+  monthly_data_anxiety_esophagus,
+  monthly_data_anxiety_pancreas
+  )
+
+ggplot(combined_data, aes(x = month_since_entry, y = predicted_count_1000pm, color = factor(Cancer_type))) +
+  #geom_point(aes(y = incidence_rate_1000pm), color = "black") +
+  geom_line(size = 1.1) + 
+  geom_ribbon(aes(ymin = lower_ci_1000pm, ymax = upper_ci_1000pm, fill = factor(Cancer_type)), alpha = 0.2, color = NA) +
+  labs(
+    title = "Kay cancer (anxiety)",
+    x = "Months from cancer diagnosis (months)",
+    y = "Incidence rate (‰)",
+    color = "Type",
+    fill = "Type"
+  ) +
+  # scale_color_manual(values = c("red", "blue")) +  # 男女別の色（線）
+  # scale_fill_manual(values = c("pink", "lightblue")) +  # 95%CIの塗りつぶし色
+  scale_x_continuous(
+    breaks = seq(0, max(combined_data$month_since_entry), by = 2), 
+    labels = seq(0, max(combined_data$month_since_entry), by = 2)
+  ) +
+  coord_cartesian(ylim = c(0, 25))+
+  theme_minimal()+
+  theme(legend.position = "none")
+
+# ggsave(filename = "anxiety_key_inc.pdf", plot = p, width = 7, height = 5)
+```
+
+# 注目すべきがん：不安障害：累積リスク
+```{r}
+# 食道癌
+monthly_data_anxiety_esophagus <- monthly_data_anxiety_esophagus |> 
+  mutate(
+    cumulative_hazard = cumsum(predicted_count_anxiety / n_cases),
+    cumulative_lower_ci_hazard = cumsum(lower_ci / n_cases),
+    cumulative_upper_ci_hazard = cumsum(upper_ci / n_cases),
+    cumulative_hazard_raw = cumsum(n_events_anxiety / n_cases),
+    
+    cumulative_risk = (1 - exp(-cumulative_hazard))*1000,
+    cumulative_lower_ci_risk = (1 - exp(-cumulative_lower_ci_hazard))*1000,
+    cumulative_upper_ci_risk = (1 - exp(-cumulative_upper_ci_hazard))*1000
+    )
+
+# 膵癌
+monthly_data_anxiety_pancreas <- monthly_data_anxiety_pancreas |> 
+  mutate(
+    cumulative_hazard = cumsum(predicted_count_anxiety / n_cases),
+    cumulative_lower_ci_hazard = cumsum(lower_ci / n_cases),
+    cumulative_upper_ci_hazard = cumsum(upper_ci / n_cases),
+    cumulative_hazard_raw = cumsum(n_events_anxiety / n_cases),
+    
+    cumulative_risk = (1 - exp(-cumulative_hazard))*1000,
+    cumulative_lower_ci_risk = (1 - exp(-cumulative_lower_ci_hazard))*1000,
+    cumulative_upper_ci_risk = (1 - exp(-cumulative_upper_ci_hazard))*1000
+    )
+
+
+# 統合して可視化
+combined_data_cumulative <- bind_rows(
+  monthly_data_anxiety_esophagus,
+  monthly_data_anxiety_pancreas
+  )
+
+ggplot(combined_data_cumulative, aes(x = month_since_entry, y = cumulative_risk, color = factor(Cancer_type))) +
+  geom_line(size = 1.1) +
+  geom_ribbon(aes(ymin = cumulative_lower_ci_risk, ymax = cumulative_upper_ci_risk, fill = factor(Cancer_type)), alpha = 0.2, color = NA) +
+  labs(
+    title = "Kay cancer (anxiety)",
+    x = "Months from cancer diagnosis (months)",
+    y = "Cumulative risk (‰)",
+    color = "Type",
+    fill = "Type"
+  ) +
+  # scale_color_manual(values = c("red", "blue")) + 
+  # scale_fill_manual(values = c("pink", "lightblue")) +
+  scale_x_continuous(
+    breaks = seq(0, max(combined_data_cumulative$month_since_entry), by = 2),
+    labels = seq(0, max(combined_data_cumulative$month_since_entry), by = 2)
+  ) +
+  #coord_cartesian(ylim = c(0, 330))+
+  theme_minimal()+
+  theme(legend.position = "none")
+
+# ggsave(filename = "anxiety_key_cum.pdf", plot = p, width = 7, height = 5)
+```

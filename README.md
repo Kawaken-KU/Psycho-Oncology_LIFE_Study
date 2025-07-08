@@ -9,10 +9,6 @@ This repository contains R scripts used in a study investigating the incidence o
 
 ## File structure
 
-### 🔧 Preprocessing
-- `Preprocessing_1.Rmd`: Data preprocessing for each municipality (individual level).
-- `Preprocessing_2.Rmd`: Integration and preprocessing after merging data from all municipalities.
-
 ### 📊 Main analyses
 - `Analysis_depression.Rmd`: Main analysis of depression incidence after cancer diagnosis.
 - `Analysis_anxiety.Rmd`: Main analysis of anxiety disorder incidence after cancer diagnosis.
@@ -27,6 +23,7 @@ This repository contains R scripts used in a study investigating the incidence o
 
 ## Notes
 
+- The preprocessing code cannot be made publicly available due to privacy concerns.
 - The actual analysis scripts have been modified to anonymise municipality-specific variables and identifiers in accordance with data use agreements and privacy regulations.
 - Patient-level data are not included in this repository.
 
